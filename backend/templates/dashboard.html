@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Job Hunter{% endblock %}
+{% block body %}
+<header class="topbar">
+  <h1>Job Hunter</h1>
+  <nav>
+    <a href="/" class="active">Active</a>
+    <a href="/archive">Archive</a>
+    <a href="/filtered">Filtered ({{ counts.filtered }})</a>
+    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
+  </nav>
+</header>
+
+<section class="stats">
+  <div class="stat">
+    <div class="label">Active</div>
+    <div class="value accent">{{ counts.active }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Archived</div>
+    <div class="value">{{ counts.archive }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Filtered Out</div>
+    <div class="value">{{ counts.filtered }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Min Score Filter</div>
+    <div class="value success">≥ {{ filters.min_score }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Status Filter</div>
+    <div class="value warning">{{ filters.status or 'all' }}</div>
+  </div>
+</section>
+
+<form method="get" action="/" class="filters">
+  <label class="search-label">Search
+    <div class="search-wrap">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="Title, company, location…" autocomplete="off">
+    </div>
+  </label>
+  <label>Score
+    <select name="min_score">
+      {% for v in [0, 6, 7, 8, 9] %}
+        <option value="{{v}}" {% if v == filters.min_score %}selected{% endif %}>≥ {{v}}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Status
+    <select name="status">
+      <option value="">all</option>
+      {% for s in ['ready', 'review_needed', 'scored', 'tailoring'] %}
+        <option value="{{s}}" {% if s == filters.status %}selected{% endif %}>{{s}}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">Apply</button>
+</form>
+
+{% for date_key, day_jobs in grouped %}
+  <h2 class="day">{{ date_key }}</h2>
+  <table class="jobs">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Title</th>
+        <th>Company</th>
+        <th>Loc</th>
+        <th>Salary</th>
+        <th>Score</th>
+        <th>Status</th>
+        <th>CV</th>
+        <th>Calendar</th>
+        <th>Apply</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for job in day_jobs %}
+      <tr>
+        <td>
+          <form method="post" action="/jobs/{{ job.id }}/applied" class="inline">
+            <input type="checkbox" onchange="this.form.submit()" title="mark applied → archive">
+          </form>
+        </td>
+        <td class="title-cell">{{ job.title }}</td>
+        <td class="company-cell">{{ job.company }}</td>
+        <td>{{ job.location or '' }}{% if job.remote_flag %} <span class="tag">remote</span>{% endif %}</td>
+        <td>{{ job.salary or '' }}</td>
+        <td><span class="score score-{{ score_class(job.score) }}">{{ '%.1f' % (job.score or 0) }}</span></td>
+        <td><span class="status status-{{ job.status }}">{{ job.status }}</span></td>
+        <td>
+          {% if job.has_pdf %}
+            <a href="/admin/pdf/{{ job.id }}" target="_blank">view</a>
+          {% else %}—{% endif %}
+        </td>
+        <td><button class="cal-btn" data-job-id="{{ job.id }}">+ event</button></td>
+        <td>
+          {% if job.apply_url %}<a href="{{ job.apply_url }}" target="_blank" rel="noopener">link</a>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="empty">No jobs match the filter.</p>
+{% endfor %}
+
+<dialog id="cal-modal">
+  <form method="post" id="cal-form">
+    <input type="hidden" name="next_url" value="/">
+    <h3>Add Calendar Event</h3>
+    <label>Type
+      <select name="event_type" required>
+        <option value="interview">Interview</option>
+        <option value="assessment">Assessment</option>
+        <option value="hr_call">HR Call</option>
+        <option value="deadline">Deadline</option>
+      </select>
+    </label>
+    <label>Date <input type="date" name="event_date" required></label>
+    <label>Time <input type="time" name="event_time" required></label>
+    <label>Notes <textarea name="notes" rows="3" placeholder="recruiter name, link, anything else"></textarea></label>
+    <div class="row">
+      <button type="submit">Create</button>
+      <button type="button" onclick="document.getElementById('cal-modal').close()">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const modal = document.getElementById('cal-modal');
+const form = document.getElementById('cal-form');
+document.querySelectorAll('.cal-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    form.action = `/jobs/${btn.dataset.jobId}/calendar`;
+    modal.showModal();
+  });
+});
+</script>
+{% endblock %}

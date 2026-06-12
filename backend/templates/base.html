@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>{% block title %}Job Hunter{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {% set sys_alerts = get_alerts() %}
+  {% if sys_alerts %}
+  <div class="sysalert-bar">
+    {% for key, a in sys_alerts.items() %}
+    <div class="sysalert sysalert--{{ a.level }}">
+      <span class="sysalert__icon">&#9888;</span>
+      <div class="sysalert__text">
+        <strong>{{ a.message }}</strong>
+        {% if a.instructions %}<span class="sysalert__fix">{{ a.instructions }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% block body %}{% endblock %}
+</body>
+</html>

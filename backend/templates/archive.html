@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Archive — Job Hunter{% endblock %}
+{% block body %}
+<header class="topbar">
+  <h1>Job Hunter</h1>
+  <nav>
+    <a href="/">Active</a>
+    <a href="/archive" class="active">Archive</a>
+    <a href="/filtered">Filtered</a>
+    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
+  </nav>
+</header>
+
+<section class="stats">
+  <div class="stat">
+    <div class="label">Active</div>
+    <div class="value">{{ counts.active }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Total Applied</div>
+    <div class="value accent">{{ counts.archive }}</div>
+  </div>
+</section>
+
+<p class="muted">Jobs you've marked applied. They never auto-delete.</p>
+
+{% if jobs %}
+<table class="jobs">
+  <thead>
+    <tr>
+      <th>Applied on</th>
+      <th>Title</th>
+      <th>Company</th>
+      <th>Score</th>
+      <th>CV</th>
+      <th>Calendar</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td>{{ job.date_applied.strftime('%Y-%m-%d') if job.date_applied else '?' }}</td>
+      <td class="title-cell">{{ job.title }}</td>
+      <td class="company-cell">{{ job.company }}</td>
+      <td><span class="score score-{{ score_class(job.score) }}">{{ '%.1f' % (job.score or 0) }}</span></td>
+      <td>
+        {% if job.has_pdf %}
+          <a href="/admin/pdf/{{ job.id }}" target="_blank">view</a>
+        {% else %}—{% endif %}
+      </td>
+      <td>
+        <button class="cal-btn" data-job-id="{{ job.id }}">+ event</button>
+      </td>
+      <td>
+        <form method="post" action="/jobs/{{ job.id }}/unapply" class="inline">
+          <button type="submit" class="link" title="move back to active">undo</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="empty">No applied jobs yet.</p>
+{% endif %}
+
+<dialog id="cal-modal">
+  <form method="post" id="cal-form">
+    <input type="hidden" name="next_url" value="/archive">
+    <h3>Add Calendar Event</h3>
+    <label>Type
+      <select name="event_type" required>
+        <option value="interview">Interview</option>
+        <option value="assessment">Assessment</option>
+        <option value="hr_call">HR Call</option>
+        <option value="deadline">Deadline</option>
+      </select>
+    </label>
+    <label>Date <input type="date" name="event_date" required></label>
+    <label>Time <input type="time" name="event_time" required></label>
+    <label>Notes <textarea name="notes" rows="3" placeholder="recruiter name, link, anything else"></textarea></label>
+    <div class="row">
+      <button type="submit">Create</button>
+      <button type="button" onclick="document.getElementById('cal-modal').close()">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const modal = document.getElementById('cal-modal');
+const form = document.getElementById('cal-form');
+document.querySelectorAll('.cal-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    form.action = `/jobs/${btn.dataset.jobId}/calendar`;
+    modal.showModal();
+  });
+});
+</script>
+{% endblock %}

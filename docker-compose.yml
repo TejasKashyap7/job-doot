@@ -1,0 +1,36 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: jobhunter-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./backend/pdfs:/app/pdfs
+      # Overlay the baked master_resume.tex so edits on host are picked up
+      # without rebuilding the image. Path matches the COPY target inside.
+      - ./backend/master_resume.tex:/app/backend/master_resume.tex:ro
+      - ./dummy_jobs.csv:/app/dummy_jobs.csv:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  gmail-watcher:
+    build:
+      context: .
+      dockerfile: gmail-watcher/Dockerfile
+    container_name: jobhunter-gmail
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - backend

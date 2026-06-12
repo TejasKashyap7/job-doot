@@ -1,0 +1,40 @@
+# Job Hunter — single canonical requirements file.
+# Used by:
+#   • local Mac dev (conda env: job-doot, Python 3.11)
+#   • backend Docker image (python:3.11-slim)
+#   • gmail-watcher Docker image (python:3.11-slim) — subset, but fine to install all
+#   • future Raspberry Pi 5 deployment (Python 3.11 on Pi OS Bookworm)
+#
+# Rule: any new `pip install <pkg>` MUST append the pinned version here.
+# Pin policy: exact pins (==) for reproducibility across Mac / Docker / Pi.
+# Update by running `pip install -U <pkg>` then re-pin via `pip show <pkg>`.
+
+# ---- Web framework ----
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.18      # form parsing for login POST
+itsdangerous==2.2.0           # signed session cookies
+jinja2==3.1.4                 # dashboard templates
+
+# ---- Database ----
+sqlalchemy==2.0.36
+
+# ---- LLM / agents ----
+groq==0.13.0
+
+# ---- Google APIs (Gmail + Calendar) ----
+google-auth==2.36.0
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.151.0
+
+# ---- Scheduling ----
+apscheduler==3.10.4
+pytz==2024.2
+
+# ---- HTTP (Telegram bot, misc) ----
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.2.2
+
+# ---- Telegram utilities (one-time cleanup script only, not deployed) ----
+telethon==1.36.0

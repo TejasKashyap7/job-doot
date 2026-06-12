@@ -1,0 +1,32 @@
+# Anything not needed inside the image. Keeps build context small + secrets out.
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# runtime data — comes from a mounted volume on host, not baked into image
+data/
+backend/pdfs/
+
+# python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+*.egg-info/
+
+# editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.git/
+.gitignore
+
+# docs / one-off scripts not needed at runtime
+SETUP.md
+CLAUDE.md
+DEPLOY.md
+tools/

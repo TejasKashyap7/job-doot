@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Filtered — Job Hunter{% endblock %}
+{% block body %}
+<header class="topbar">
+  <h1>Job Hunter</h1>
+  <nav>
+    <a href="/">Active</a>
+    <a href="/archive">Archive</a>
+    <a href="/filtered" class="active">Filtered ({{ counts.filtered }})</a>
+    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
+  </nav>
+</header>
+
+<section class="stats">
+  <div class="stat">
+    <div class="label">Active</div>
+    <div class="value">{{ counts.active }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Filtered Out</div>
+    <div class="value accent">{{ counts.filtered }}</div>
+  </div>
+</section>
+
+<p class="muted">Jobs that scored below 6 — not worth applying to. Read-only.</p>
+
+{% if jobs %}
+<table class="jobs">
+  <thead>
+    <tr>
+      <th>Scraped</th>
+      <th>Title</th>
+      <th>Company</th>
+      <th>Location</th>
+      <th>Score</th>
+      <th>Skill gaps</th>
+      <th>Link</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td>{{ job.date_scraped.strftime('%Y-%m-%d') if job.date_scraped else '?' }}</td>
+      <td class="title-cell">{{ job.title }}</td>
+      <td class="company-cell">{{ job.company }}</td>
+      <td>{{ job.location or '' }}</td>
+      <td><span class="score score-{{ score_class(job.score) }}">{{ '%.1f' % (job.score or 0) }}</span></td>
+      <td class="muted">{{ job.top_gaps | join(', ') if job.top_gaps else '—' }}</td>
+      <td>{% if job.apply_url %}<a href="{{ job.apply_url }}" target="_blank" rel="noopener">link</a>{% else %}—{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="empty">No filtered jobs yet.</p>
+{% endif %}
+{% endblock %}
