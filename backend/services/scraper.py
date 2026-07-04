@@ -264,8 +264,17 @@ def _refresh_jsessionid(session: requests.Session) -> bool:
 # Section C — LinkedIn job drip
 # ---------------------------------------------------------------------------
 
+# LinkedIn drip pacing — ban-safety knobs. Tune conservatively for a brand-new,
+# zero-connection dummy account. Widened from the original 15–45 min after real
+# traffic looked too fast (2026-07-05).
+LI_JOBS_PER_SEARCH = 3                          # job pages fetched per keyword search
+LI_FETCH_DELAY_RANGE = (20, 75)                 # sec between job-detail fetches (human clicking)
+LI_STARTUP_JITTER_RANGE = (30, 120)             # sec before the very first search after (re)connect
+LI_SEARCH_INTERVAL_RANGE = (30 * 60, 90 * 60)   # sec between searches (was 15–45 min)
+
+
 def _next_sleep() -> float:
-    return random.uniform(15 * 60, 45 * 60)
+    return random.uniform(*LI_SEARCH_INTERVAL_RANGE)
 
 
 def _linkedin_search(session: requests.Session, keyword: str) -> list[str]:
@@ -292,7 +301,7 @@ def _linkedin_search(session: requests.Session, keyword: str) -> list[str]:
         if job_url not in seen:
             seen.add(job_url)
             urls.append(job_url)
-            if len(urls) >= 5:
+            if len(urls) >= LI_JOBS_PER_SEARCH:
                 break
     return urls
 
@@ -372,6 +381,11 @@ def linkedin_drip_loop(db_factory) -> None:
                 time.sleep(3600)
                 continue
 
+            # Startup jitter — don't fire the instant the cookie loads (bot tell).
+            jitter = random.uniform(*LI_STARTUP_JITTER_RANGE)
+            log.info("LinkedIn drip: startup jitter %.0fs before first search", jitter)
+            time.sleep(jitter)
+
             kw_queue: list[str] = []
 
             while True:  # INNER: normal operation
@@ -382,7 +396,14 @@ def linkedin_drip_loop(db_factory) -> None:
                 log.info("LinkedIn drip: searching '%s'", keyword)
                 urls = _linkedin_search(session, keyword)
 
-                for url in urls:
+                for i, url in enumerate(urls):
+                    # Human-like pause between opening job listings (turns the
+                    # per-search burst into paced clicking). Skip before the first.
+                    if i > 0:
+                        pause = random.uniform(*LI_FETCH_DELAY_RANGE)
+                        log.info("LinkedIn drip: %.0fs pause before next job", pause)
+                        time.sleep(pause)
+
                     job_dict = _linkedin_fetch_job(session, url)
                     if not job_dict:
                         continue
