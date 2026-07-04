@@ -1,7 +1,8 @@
 # Infrastructure — Approach
 
 ## Status
-BUILT (local Mac dev) | NOT DEPLOYED (Pi deployment pending)
+DEPLOYED — live at `jobs.marutsut.me` on the Pi since 2026-07-04. Local Mac dev still
+uses conda directly. Deploys are hands-free via the auto-deploy poller (see below).
 
 ## Overview
 Two Docker containers sharing one SQLite database file via a named volume.
@@ -54,14 +55,32 @@ The `/app/...` paths in `.env` are container-only. Local overrides above take pr
 - Calendar reminder jobs: persisted in `apscheduler_jobs` table, survive backend restarts
 - Starts on FastAPI lifespan startup, shuts down gracefully on app shutdown
 
-## Pi deployment
-- Pi OS Bookworm, Python 3.11 (matches Docker base)
-- Project lives at `/home/<user>/job-doot` on Pi
-- Deploy: `rsync` code + `scp` secrets (`data/credentials.json`, `data/token.json`, `.env`)
-- Build on Pi: `docker-compose build && docker-compose up -d`
-- Public URL: `jobs.marutsut.me` via Cloudflare Tunnel (separate tunnel from the existing
-  ML inference server at `pifive.marutsut.me`)
-- Full runbook: `DEPLOY.md` in repo root
+## Pi deployment (LIVE since 2026-07-04)
+- Pi OS Bookworm, Python 3.11 (matches Docker base). NVMe SSD, not SD card.
+- Project lives at `/home/tejas/job-doot` on Pi as a **git clone** of the private repo
+  (read-only deploy key). Secrets (`.env`, `data/credentials.json`, `data/token.json`)
+  live only on the Pi, gitignored, chmod 600.
+- Public URL: `jobs.marutsut.me` via Cloudflare Tunnel. The tunnel is **remotely managed
+  via the Cloudflare API, NOT `~/.cloudflared/config.yml`** — editing config.yml is
+  overridden. Coexists with the ML server (`pifive.marutsut.me`) and other subdomains.
+
+### Auto-deploy (git poller) — deploying = `git push` to `main`
+- A cron job (`*/3 * * * *`) runs `~/job-doot-deploy.sh`: git fetch → if `origin/main`
+  changed, `git reset --hard` → `docker compose build` → `up -d` → poll
+  `localhost:8080/health` for 60s → Telegram "✅ deployed" / "⚠️ rolled back".
+- **Build-then-swap + auto-rollback**: a failed build or unhealthy start rolls back to
+  the previous commit and keeps the old containers running — a bad push can't take the
+  site down. `flock` prevents overlapping runs.
+- The DB self-migrates on backend startup (`database/db.py::_ensure_columns`), so schema
+  changes apply on redeploy with no manual step. Pushing from the Mac uses SSH host alias
+  `github-tk7` (personal account, separate from the Blu Parrot work accounts).
+- Full runbook: `DEPLOY.md` §10 in repo root.
+
+### Self-service LinkedIn cookie
+- The `li_at` session cookie expires every 1–2 weeks; when it does, the dashboard shows a
+  red "scraper paused" banner linking to `/admin/linkedin-cookie` (login-gated). Pasting a
+  fresh `li_at` there writes `data/li_cookies.json` (chmod 600) and clears the alert; the
+  drip loop re-reads it on its next tick and resumes. No SSH needed.
 
 ## Environment variables (key ones)
 ```

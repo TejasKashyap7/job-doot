@@ -410,3 +410,28 @@ Smart Agri edge-benchmark IEEE paper (draft exists at
 ~/Downloads/agri-tanzania-documentation/smart_agri_notebooks/main.tex — fill author
 placeholders, compile on Overleaf, pick venue); (b) merged open-source contributions
 in the Flower / LangChain / Sarvam ecosystem (verifiable, tied to locked skills).
+
+---
+
+## Flaw 13: Dashboard & UI Are Function-First, Not Polished
+
+**Status:** open
+
+### Explanation
+Every page — the dashboard, the filtered / needs-review views, the Flaw 2 tailoring
+badges, and the new LinkedIn-cookie page — was built function-first. They work and
+they are clear, but the visual design and UX are rough: plain utilitarian styling,
+basic mobile layout, terse empty/error states, and no cohesive polish across pages.
+This is deliberate for now — prove the pipeline's value before spending time on looks.
+
+### Example
+The LinkedIn-cookie page and dashboard do their job, but next to a finished product
+they read like an internal tool — plain tables, bare forms, minimal states. Fine for
+a solo user today; it would need a polish pass before it felt "done" or was shown to
+anyone else.
+
+### Solution
+_Not yet resolved._ Deliberately deferred to the END — after the pipeline's value is
+verified (M3 quality review) and the feature set is stable, do one dedicated UI/UX
+polish pass: visual hierarchy, consistent components across pages, mobile refinement,
+and proper empty / loading / error / success states. Not a blocker for anything else.

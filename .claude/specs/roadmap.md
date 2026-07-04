@@ -1,14 +1,14 @@
 # Job-Doot — Project Roadmap
 
 > Update this file as milestones are completed.
-> Current overall progress: **45% done**
+> Current overall progress: **65% done**
 
 ---
 
 ## Overall Progress
 
 ```
-[██████████████░░░░░░░░░░░░░░░░░░]  45%
+[████████████████████░░░░░░░░░░]  65%
 ```
 
 ---
@@ -103,22 +103,35 @@ daily. Also add visibility when Groq fails so you know why jobs aren't scored.
 
 ---
 
-### M6 — Pi Deployed Live `+20%` → brings total to **80%**
+### M6 — Pi Deployed Live `+20%` → brings total to **65%** ✅ DONE (2026-07-04)
 
 **What it is:** The project running on the Raspberry Pi 5 at `jobs.marutsut.me`,
-stable, scraping daily, accessible from anywhere via Cloudflare tunnel.
-This is the biggest milestone — it means the tool is actually in use.
+accessible from anywhere via Cloudflare tunnel. The biggest milestone — the tool is
+actually deployed and reachable.
 
 | Task | Status |
 |------|--------|
-| rsync codebase to Pi | ❌ |
-| scp secrets (`.env`, `credentials.json`, `token.json`) | ❌ |
-| `docker compose up -d` on Pi | ❌ |
-| Verify Cloudflare tunnel (`jobs.marutsut.me`) is live | ❌ |
-| First real daily scrape on Pi | ❌ |
-| Confirm dashboard loads from phone | ❌ |
+| Code onto Pi (fresh **git clone**, replaces rsync) | ✅ |
+| Secrets on Pi (`.env`, `credentials.json`, `token.json`, chmod 600) | ✅ |
+| `docker compose up -d` on Pi | ✅ |
+| Cloudflare tunnel (`jobs.marutsut.me`) live | ✅ |
+| Dashboard loads from phone (external, via Cloudflare) | ✅ |
+| First real daily scrape on Pi | ⏳ Naukri fires 06:00 IST; LinkedIn paused pending cookie |
 
-**Depends on:** M2 (scraper), M4 (notifications verified), M5 (dashboard usable)
+**Depends on:** M2 (scraper), M5 (dashboard usable)
+
+**Delivered beyond the original plan (during deployment):**
+- **Auto-deploy pipeline** — `git push` to `main` → Pi cron poller (every 3 min) pulls,
+  `docker compose build`, swaps, health-checks, Telegrams the result, and auto-rolls-back
+  on failure. Deploying is now hands-free. Read-only deploy key; tunnel is API-managed.
+  Full detail: `DEPLOY.md` §10 and `infrastructure/approach.md`.
+- **Self-service LinkedIn cookie page** — `/admin/linkedin-cookie`: paste the `li_at`
+  value, it writes `data/li_cookies.json` and the scraper resumes. No SSH. The red
+  "scraper paused" banner links straight to it.
+- **Flaw 2 tailoring checks** shipped and live (change-ratio + JD skill-coverage badges
+  + "Needs review" queue) — see Flaw 2.
+- **Scheduler startup crash fixed** (persistent APScheduler jobstore could not pickle a
+  lambda) — the app now boots cleanly on the Pi.
 
 ---
 
@@ -166,13 +179,15 @@ LinkedIn Easy Apply automation. Schema hooks already exist (`Job.easy_apply`,
 |-----------|--------|--------|---------------|
 | M1 — Core AI Pipeline | 25% | ✅ Done | 25% |
 | M2 — Scraper | 15% | ✅ Done | 40% |
-| M3 — Quality Verified | 10% | ❌ Not started | 40% |
-| M4 — Notifications | 5% | ❌ Not started | 40% |
+| M3 — Quality Verified | 10% | ⏳ Flaw 2 tooling built; human review pending | 40% |
+| M4 — Notifications | 5% | ⏳ Telegram delivery proven (deploy pings); test pending | 40% |
 | M5 — Dashboard Polish | 5% | ✅ Done | 45% |
-| M6 — Pi Deployed | 20% | ❌ Not started | 45% |
-| M7 — Ops Hardening | 10% | ❌ Not started | 45% |
-| M8 — Market Insights | 10% | ❌ Not started | 45% |
+| M6 — Pi Deployed | 20% | ✅ Done | 65% |
+| M7 — Ops Hardening | 10% | ❌ Decisions locked (heartbeat/backup); build pending | 65% |
+| M8 — Market Insights | 10% | ❌ Not started | 65% |
+
+_Extra (not in original plan): auto-deploy pipeline + self-service LinkedIn cookie page — both live._
 
 ---
 
-_Last updated: 2026-06-11_
+_Last updated: 2026-07-05_
