@@ -18,6 +18,7 @@ from database.models import Job, Resume
 from services.ingest import ingest_rows, load_csv
 from services.auth import COOKIE_NAME, check_password, make_cookie_value, require_login
 import services.alerts as alerts_svc
+from services.scraper import save_li_at, has_li_at
 from agents.scorer import score_pending, score_job
 from agents.tailor_loop import tailor_pending, tailor_for_job
 from agents.quality_check import confidence_label
@@ -141,6 +142,33 @@ def list_jobs(db: Session = Depends(get_db), limit: int = 50):
          "date_scraped": j.date_scraped.isoformat() if j.date_scraped else None}
         for j in rows
     ]
+
+
+# ---------------- LinkedIn cookie ----------------
+
+@app.get("/admin/linkedin-cookie", response_class=HTMLResponse,
+         dependencies=[Depends(require_login)])
+def linkedin_cookie_form(request: Request, saved: int = 0):
+    return templates.TemplateResponse("linkedin_cookie.html", {
+        "request": request, "has_cookie": has_li_at(),
+        "saved": bool(saved), "error": None,
+    })
+
+
+@app.post("/admin/linkedin-cookie", dependencies=[Depends(require_login)])
+def linkedin_cookie_save(request: Request, li_at: str = Form(...)):
+    value = (li_at or "").strip()
+    if len(value) < 20:
+        return templates.TemplateResponse("linkedin_cookie.html", {
+            "request": request, "has_cookie": has_li_at(), "saved": False,
+            "error": "That doesn't look like a valid li_at value — paste the full "
+                     "string from the Cookie Value pane (it starts with AQED…).",
+        }, status_code=400)
+    save_li_at(value)
+    # Clear the paused banner now; if the value is bad, the drip loop re-flags it.
+    alerts_svc.clear_alert("linkedin_cookie_expired")
+    return RedirectResponse(url="/admin/linkedin-cookie?saved=1",
+                            status_code=status.HTTP_303_SEE_OTHER)
 
 
 # ---------------- Auth ----------------

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}LinkedIn Cookie — Job Hunter{% endblock %}
+{% block body %}
+<header class="topbar">
+  <h1>Job Hunter</h1>
+  <nav>
+    <a href="/">Active</a>
+    <a href="/archive">Archive</a>
+    <a href="/filtered">Filtered</a>
+    <a href="/admin/linkedin-cookie" class="active">LinkedIn cookie</a>
+    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
+  </nav>
+</header>
+
+<section class="cookie-page">
+  <h2>Update LinkedIn session cookie</h2>
+  <p class="cookie-muted">The scraper signs into the dummy account with one cookie
+    (<code>li_at</code>) that LinkedIn expires every 1&ndash;2 weeks. Paste a fresh
+    value here to resume it &mdash; no terminal, no SSH.</p>
+
+  {% if saved %}
+  <div class="cookie-banner cookie-banner--ok">
+    &#10003; Cookie saved. The LinkedIn scraper resumes on its next cycle (within ~1 hour).
+    If the value was wrong, the paused warning will reappear on its own.
+  </div>
+  {% endif %}
+  {% if error %}
+  <div class="cookie-banner cookie-banner--err">{{ error }}</div>
+  {% endif %}
+
+  <div class="cookie-status">
+    <span>Current status:</span>
+    {% if has_cookie %}
+      <span class="pill pill--ok">cookie set</span>
+    {% else %}
+      <span class="pill pill--warn">no cookie &mdash; scraper paused</span>
+    {% endif %}
+  </div>
+
+  <form method="post" action="/admin/linkedin-cookie" class="cookie-form">
+    <label for="li_at">Paste the <code>li_at</code> value</label>
+    <textarea id="li_at" name="li_at" rows="4" placeholder="AQED&hellip;"
+              spellcheck="false" autocomplete="off" required></textarea>
+    <div class="cookie-actions">
+      <button type="submit">Save &amp; resume scraper</button>
+      <a class="cookie-guide" href="https://claude.ai/code/artifact/3ab1aa5f-43a0-4767-8764-3d9ad146e9e4"
+         target="_blank" rel="noopener">How do I get this cookie? &rarr;</a>
+    </div>
+  </form>
+
+  <p class="cookie-muted cookie-small">Stored only on the Pi in
+    <code>data/li_cookies.json</code> (chmod 600, never committed). Treat it like a
+    password.</p>
+</section>
+{% endblock %}

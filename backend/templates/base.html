@@ -16,6 +16,7 @@
       <div class="sysalert__text">
         <strong>{{ a.message }}</strong>
         {% if a.instructions %}<span class="sysalert__fix">{{ a.instructions }}</span>{% endif %}
+        {% if key == "linkedin_cookie_expired" %}<a class="sysalert__action" href="/admin/linkedin-cookie">Update cookie &rarr;</a>{% endif %}
       </div>
     </div>
     {% endfor %}

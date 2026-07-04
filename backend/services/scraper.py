@@ -175,6 +175,28 @@ def _load_li_at() -> str | None:
         return None
 
 
+def has_li_at() -> bool:
+    """Is a LinkedIn session cookie currently on disk? (value not exposed)"""
+    return _load_li_at() is not None
+
+
+def save_li_at(li_at: str) -> Path:
+    """Write the LinkedIn session cookie to the same file the drip loop reads.
+    The running loop re-reads it on its next tick, so the scraper resumes on its
+    own. Returns the path written."""
+    value = (li_at or "").strip()
+    if not value:
+        raise ValueError("empty li_at value")
+    path = _cookies_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"li_at": value}))
+    try:
+        path.chmod(0o600)  # it's a session secret
+    except OSError:
+        pass
+    return path
+
+
 def _is_expired(resp: requests.Response) -> bool:
     expired = "linkedin.com/login" in resp.url or resp.status_code == 401
     if expired:
