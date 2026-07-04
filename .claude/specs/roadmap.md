@@ -124,13 +124,13 @@ This is the biggest milestone — it means the tool is actually in use.
 
 ### M7 — Ops Hardening `+10%` → brings total to **90%**
 
-**What it is:** Make sure you know when things break, and that a dead SD card
+**What it is:** Make sure you know when things break, and that a dead drive
 doesn't destroy months of data.
 
 | Task | Status |
 |------|--------|
-| Health monitor: ping backend every 15min, alert on failure (Flaw 6) | ❌ |
-| SD card backup strategy (USB drive or nightly rsync to NAS) (Flaw 7) | ❌ |
+| Daily Telegram heartbeat: reports backend + scrape + watcher status; silence = alarm (Flaws 3 & 6, unified) | ❌ |
+| Off-site backup: monthly DB snapshot to a private GitHub repo (Flaw 7) | ❌ |
 | Verify backup actually restores (test it once) | ❌ |
 
 **Depends on:** M6 (Pi must be deployed first)

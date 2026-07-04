@@ -20,6 +20,7 @@ from services.auth import COOKIE_NAME, check_password, make_cookie_value, requir
 import services.alerts as alerts_svc
 from agents.scorer import score_pending, score_job
 from agents.tailor_loop import tailor_pending, tailor_for_job
+from agents.quality_check import confidence_label
 from scheduler import start_scheduler, CSV_PATH
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -111,6 +112,10 @@ def admin_tailor_one(job_id: int, db: Session = Depends(get_db)):
         "job_id": job.id, "status": job.status, "iterations": resume.iteration_count,
         "verdict": resume.critic_verdict, "pdf_path": resume.pdf_path,
         "unfixable": resume.unfixable_items,
+        "similarity_to_master": resume.similarity_to_master,
+        "jd_skill_coverage": resume.jd_skill_coverage,
+        "tailoring_confidence": confidence_label(
+            resume.similarity_to_master, resume.jd_skill_coverage),
     }
 
 
@@ -201,36 +206,60 @@ def _attach_pdf_flag(db: Session, jobs: list[Job]) -> list[dict]:
         .group_by(Resume.job_id)
         .subquery()
     )
-    pdf_paths = {
-        job_id: bool(pp) for (job_id, pp) in
-        db.query(Resume.job_id, Resume.pdf_path)
+    latest_resumes = {
+        job_id: (bool(pp), sim, cov) for (job_id, pp, sim, cov) in
+        db.query(Resume.job_id, Resume.pdf_path,
+                 Resume.similarity_to_master, Resume.jd_skill_coverage)
         .join(latest_ids, Resume.id == latest_ids.c.max_id)
         .all()
     }
     out = []
     for j in jobs:
+        has_pdf, sim, cov = latest_resumes.get(j.id, (False, None, None))
         out.append({
             "id": j.id, "title": j.title, "company": j.company,
             "location": j.location, "salary": j.salary, "remote_flag": j.remote_flag,
             "score": j.score, "status": j.status, "apply_url": j.apply_url,
             "date_scraped": j.date_scraped, "date_applied": j.date_applied,
-            "has_pdf": pdf_paths.get(j.id, False),
+            "has_pdf": has_pdf,
+            # Flaw 2 tailoring tag: ok / review / unchanged / None (no resume yet)
+            "confidence": confidence_label(sim, cov) if has_pdf else None,
         })
     return out
+
+
+def _needs_review_count(db: Session) -> int:
+    """Active jobs whose latest resume tripped a Flaw 2 tailoring flag."""
+    active_ids = [row[0] for row in
+                  db.query(Job.id).filter(Job.status.in_(ACTIVE_STATUSES)).all()]
+    if not active_ids:
+        return 0
+    latest_ids = (
+        db.query(Resume.job_id, func.max(Resume.id).label("max_id"))
+        .filter(Resume.job_id.in_(active_ids))
+        .group_by(Resume.job_id).subquery()
+    )
+    rows = (
+        db.query(Resume.similarity_to_master, Resume.jd_skill_coverage)
+        .join(latest_ids, Resume.id == latest_ids.c.max_id).all()
+    )
+    return sum(1 for (sim, cov) in rows
+               if confidence_label(sim, cov) in ("unchanged", "review"))
 
 
 def _counts(db: Session) -> dict:
     active = db.query(Job).filter(Job.status.in_(ACTIVE_STATUSES)).count()
     archive = db.query(Job).filter(Job.status == "applied").count()
     filtered = db.query(Job).filter(Job.status == "filtered_out").count()
-    return {"active": active, "archive": archive, "filtered": filtered}
+    return {"active": active, "archive": archive, "filtered": filtered,
+            "needs_review": _needs_review_count(db)}
 
 
 # ---------------- Dashboard pages ----------------
 
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_login)])
 def dashboard(request: Request, db: Session = Depends(get_db),
-              min_score: int = 0, status: str = "", q: str = ""):
+              min_score: int = 0, status: str = "", q: str = "", review: int = 0):
     query = db.query(Job).filter(Job.status.in_(ACTIVE_STATUSES))
     if min_score:
         query = query.filter(Job.score >= min_score)
@@ -248,6 +277,10 @@ def dashboard(request: Request, db: Session = Depends(get_db),
 
     rows = _attach_pdf_flag(db, jobs)
 
+    # Flaw 2 review queue: show only resumes flagged by the tailoring checks.
+    if review:
+        rows = [r for r in rows if r["confidence"] in ("unchanged", "review")]
+
     # Group by date scraped (newest first, already ordered)
     grouped = OrderedDict()
     for r in rows:
@@ -258,7 +291,7 @@ def dashboard(request: Request, db: Session = Depends(get_db),
         "request": request,
         "grouped": grouped.items(),
         "counts": _counts(db),
-        "filters": {"min_score": min_score, "status": status, "q": q},
+        "filters": {"min_score": min_score, "status": status, "q": q, "review": review},
         "score_class": _score_class,
     })
 

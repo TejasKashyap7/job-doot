@@ -20,6 +20,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from agents import critic, improver
+from agents.quality_check import evaluate
 from database.models import Job, Resume
 from services.latex_compiler import compile_latex, LatexCompileError
 
@@ -55,6 +56,7 @@ def tailor_for_job(db: Session, job: Job) -> Resume:
         job.status = "scored"
         db.commit()
         raise
+    master_latex = current_latex  # original, for the Flaw 2 change-check
     last_critic = None
     last_improver = None
     iteration = 0
@@ -115,6 +117,12 @@ def tailor_for_job(db: Session, job: Job) -> Resume:
         else "review_needed"
     )
 
+    # Flaw 2: mechanical tailoring checks over the final resume (no Groq call).
+    quality = evaluate(master_latex, current_latex, job.raw_description)
+    log.info("[job %d] tailoring check: similarity=%.3f coverage=%s confidence=%s missing=%s",
+             job.id, quality["similarity"], quality["coverage"],
+             quality["confidence"], quality["missing_skills"])
+
     resume = Resume(
         job_id=job.id,
         latex_content=current_latex,
@@ -123,6 +131,8 @@ def tailor_for_job(db: Session, job: Job) -> Resume:
         critic_verdict=last_critic["verdict"] if last_critic else "UNKNOWN",
         changelog=(last_improver or {}).get("changelog", "") if last_improver else "",
         unfixable_items=(last_improver or {}).get("unfixable", "") if last_improver else "",
+        similarity_to_master=quality["similarity"],
+        jd_skill_coverage=quality["coverage"],
         created_at=datetime.utcnow(),
     )
     if not compile_ok:

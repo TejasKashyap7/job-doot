@@ -55,8 +55,8 @@ Per day of running:
 So after **1 year**: DB is ~326MB, PDFs on disk are ~1.1GB, total ~1.4GB.
 After **2 years**: ~2.8GB. After **5 years**: ~7GB.
 
-A 64GB SD card won't fill up. But SD cards on Pi degrade from write cycles — the
-WAL checkpointing writes continuously. An SSD via USB or NVMe HAT eliminates this.
+Capacity is not a problem. Write-wear used to be (SD cards degrade from write
+cycles), but the Pi now runs on an NVMe SSD, which eliminates that concern.
 For the insights page specifically: running `json_each()` over 25,000 rows (1 year)
 is instant in SQLite. Over 100,000 rows (4 years) starts to feel it without indexes.
 

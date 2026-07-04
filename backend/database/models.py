@@ -47,6 +47,9 @@ class Resume(Base):
     critic_verdict = Column(String)         # APPROVED / NEEDS WORK
     changelog = Column(Text)
     unfixable_items = Column(Text)
+    # Flaw 2 tailoring checks (mechanical, no-AI). See agents/quality_check.py.
+    similarity_to_master = Column(Float)    # 0..1; ~1.0 => resume ~unchanged
+    jd_skill_coverage = Column(Float)       # 0..1; None when JD names no known skill
     created_at = Column(DateTime, default=datetime.utcnow)
 
     job = relationship("Job", back_populates="resumes")

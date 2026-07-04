@@ -3,7 +3,9 @@
 ---
 
 ## FLAW-1: Pi SD card write wear — SQLite WAL hammers the card daily
-**Status: OPEN — important before long-term Pi deployment**
+**Status: RESOLVED — Tejas pivoted the Pi to an NVMe SSD (exactly Option A/B below),
+for this very reason. Write-wear is no longer a concern. Off-site data backup is now
+tracked separately as Flaw 7 in the master flaw.md.**
 
 **The problem:**
 SQLite in WAL mode writes to a WAL file first, then checkpoints (flushes) to the main
@@ -33,6 +35,12 @@ all your applied job records. No backup existed.
 
 **Recommendation:** Option A (USB SSD) is the cheapest and most practical fix.
 Option C should be done regardless as a safety net.
+
+**Resolution (2026-07-03):** Tejas moved the whole Pi to an NVMe SSD — the write-wear
+half of this flaw is gone. He also fitted the official Pi 5 power supply for stable
+power given the multiple devices attached. The remaining "no backup" half is handled
+by Flaw 7 in the master flaw.md: a monthly snapshot of the jobs DATABASE (not the
+PDFs, which are regenerable) to a private GitHub repo.
 
 ---
 

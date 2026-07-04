@@ -429,6 +429,31 @@ table.jobs input[type=checkbox] {
   letter-spacing: 0.4px;
 }
 
+/* Flaw 2 tailoring-confidence badges (same shape as .status) */
+.tailoring {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border: 1px solid transparent;
+}
+.tailoring-ok        { background: rgba(61,220,151,0.12); color: var(--success); border-color: rgba(61,220,151,0.3); }
+.tailoring-review    { background: rgba(255,184,107,0.12); color: var(--warning); border-color: rgba(255,184,107,0.3); }
+.tailoring-unchanged { background: rgba(255,93,108,0.12); color: var(--danger);  border-color: rgba(255,93,108,0.3); }
+
+.review-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  background: rgba(255,184,107,0.1);
+  border: 1px solid rgba(255,184,107,0.3);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  font-size: 13px;
+}
+
 /* ============================================================
    Inline forms / link-style buttons
    ============================================================ */

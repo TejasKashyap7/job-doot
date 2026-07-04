@@ -35,3 +35,21 @@ def init_db():
     from . import models  # noqa: F401  (register models)
     os.makedirs(os.path.dirname(DATABASE_URL.split("///")[-1]) or ".", exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
+
+
+def _ensure_columns():
+    """Lightweight idempotent migration: add columns that create_all won't add to
+    a table that already exists. SQLite ADD COLUMN is safe and non-locking."""
+    wanted = {
+        "resumes": {
+            "similarity_to_master": "FLOAT",
+            "jd_skill_coverage": "FLOAT",
+        },
+    }
+    with engine.begin() as conn:
+        for table, cols in wanted.items():
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            for name, sqltype in cols.items():
+                if name not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}")

@@ -7,6 +7,7 @@
     <a href="/" class="active">Active</a>
     <a href="/archive">Archive</a>
     <a href="/filtered">Filtered ({{ counts.filtered }})</a>
+    <a href="/?review=1"{% if filters.review %} class="active"{% endif %}>Needs review ({{ counts.needs_review }})</a>
     <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
   </nav>
 </header>
@@ -23,6 +24,10 @@
   <div class="stat">
     <div class="label">Filtered Out</div>
     <div class="value">{{ counts.filtered }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Needs Review</div>
+    <div class="value warning">{{ counts.needs_review }}</div>
   </div>
   <div class="stat">
     <div class="label">Min Score Filter</div>
@@ -62,6 +67,10 @@
   <button type="submit">Apply</button>
 </form>
 
+{% if filters.review %}
+<p class="review-banner">Showing only resumes flagged by the tailoring checks — read these before applying. <a href="/">← back to all active</a></p>
+{% endif %}
+
 {% for date_key, day_jobs in grouped %}
   <h2 class="day">{{ date_key }}</h2>
   <table class="jobs">
@@ -75,6 +84,7 @@
         <th>Score</th>
         <th>Status</th>
         <th>CV</th>
+        <th>Tailoring</th>
         <th>Calendar</th>
         <th>Apply</th>
       </tr>
@@ -96,6 +106,12 @@
         <td>
           {% if job.has_pdf %}
             <a href="/admin/pdf/{{ job.id }}" target="_blank">view</a>
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if job.confidence == 'ok' %}<span class="tailoring tailoring-ok" title="resume changed and covers the JD's known skills">tailored</span>
+          {% elif job.confidence == 'review' %}<span class="tailoring tailoring-review" title="JD skills missing from the resume — read this one">review</span>
+          {% elif job.confidence == 'unchanged' %}<span class="tailoring tailoring-unchanged" title="resume is basically the master — read this one">unchanged</span>
           {% else %}—{% endif %}
         </td>
         <td><button class="cal-btn" data-job-id="{{ job.id }}">+ event</button></td>

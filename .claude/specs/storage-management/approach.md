@@ -18,9 +18,9 @@ Per day of pipeline running:
 | **Total incl. PDFs** | ~3.9MB | **~117MB** | **~1.4GB** | **~2.8GB** |
 
 **Bottom line:**
-- A 64GB SD card has no capacity problem even at 5 years of running
-- The real Pi concern is **SD card write wear** from daily SQLite WAL checkpointing,
-  not raw capacity — see flaws.md FLAW-1
+- Capacity is a non-problem even at 5 years of running
+- Write wear is also no longer a concern: the Pi now runs on an **NVMe SSD** (not an
+  SD card), which has far higher write endurance — see flaws.md FLAW-1 (RESOLVED)
 - After 1 year: ~1.4GB total. After 2 years: ~2.8GB. Perfectly manageable.
 
 ## Retention policy (what to keep vs delete)

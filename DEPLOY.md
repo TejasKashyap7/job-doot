@@ -187,9 +187,11 @@ docker compose logs -f --tail=100   # both, last 100 lines
 ```
 
 ### Apply a code change
+Once the auto-deploy poller is set up (§ 10), you no longer rsync or touch the Pi:
+just `git push` to `main` and the Pi pulls, rebuilds, and restarts itself within a
+few minutes, pinging you on Telegram when it's live. Manual fallback on the Pi:
 ```bash
-# Edit on Mac, rsync up (same command as Step 2), then on Pi:
-docker compose up -d --build
+cd /home/<user>/job-doot && git pull && docker compose up -d --build
 ```
 
 ### Backup the database
@@ -293,9 +295,61 @@ Content-Type: application/json
 
 ---
 
+## 8.5 ⚠️ Self-healing scraper agent — re-enforce its sandbox BEFORE running it on the Pi
+
+> Read this before enabling the scraper-agent (`.claude/specs/scraper-agent/`) on the Pi.
+> It is easy to forget and the failure is silent.
+
+On the Mac, the dev/auditor scraper agent runs **through Claude Code**, and Claude Code's
+permission rules in `.claude/settings.local.json` are what physically stop the dev agent from
+writing anywhere except the scraper modules — it cannot touch `data/` or `database/`. That
+wall is enforced by the Claude Code **harness**, not by the agent's prompt.
+
+**On the Pi, if the dev agent runs as a standalone Groq-Llama process (outside Claude Code),
+that wall is GONE.** Settings rules only bind agents the Claude Code harness runs. A plain
+Python process calling Groq is not bound by them, so nothing stops a confused or
+prompt-injected agent from writing to `data/jobs.db` or deleting files.
+
+**What must be done before the on-Pi agent is allowed to write code:**
+- Re-implement the path restriction **in the agent's own runner code**: the program that
+  applies the agent's output must check every target path against an allowlist
+  (`backend/services/sources/**` only) and refuse anything touching `data/`, `database/`, or
+  `.env`. Same effect as the harness deny-rules, enforced in code.
+- Keep git rollback as the second net (the repo is already version-controlled — see
+  SA-Flaw 7).
+- Until that runner-level guard exists, run the on-Pi agent in **propose-only** mode (it
+  emits a diff; a human/Claude applies it), never auto-write.
+
+Background and the deeper concept: `.claude/specs/scraper-agent/flaws.md` (SA-Flaw 8) and
+`.claude/specs/scraper-agent/concepts.md` (Concept 1 — permissions are enforced by the
+harness, and a security boundary is tied to the runtime that enforces it; change the runtime
+and you can silently lose the boundary).
+
+---
+
 ## 9. What's NOT covered here (deliberately)
 
 - **Phase 2 — LinkedIn Easy Apply**: schema hooks exist (`Job.easy_apply`, `application_attempts` table) but no UI yet. Defer until pipeline is stable on Pi for ≥1 week.
 - **HTTPS on the backend**: Cloudflare Tunnel handles TLS. Backend speaks plain HTTP on `:8000` and only Cloudflare can reach it (via the tunnel daemon's loopback connection).
 - **Multi-user auth**: single hardcoded password from `.env`. You're the only user.
 - **Database migrations**: schema is small and you're the only user. If the schema changes meaningfully, simplest path is `rm data/jobs.db && docker compose restart backend`. The CSV ingest will repopulate on the next scheduler tick.
+
+---
+
+## 10. Auto-deploy (git poller)
+
+Replaces the rsync workflow. The Pi becomes a **git clone** of the private repo and runs a small script on a cron timer that pulls, rebuilds, and restarts itself when `main` changes. **Deploying = `git push` to `main`.** No SSH, no manual steps.
+
+**How it works (Pi-local script `~/job-doot-deploy.sh`, cron every 3 min):**
+1. `git fetch` — if `origin/main` is unchanged, exit (the common case, costs nothing).
+2. New commit → `git reset --hard origin/main` (the Pi never carries local commits; Pi-only config lives in `docker-compose.override.yml`, which is gitignored).
+3. `docker compose build` — **if build fails, roll back to the previous commit and keep the old containers running.** A broken push can't take the site down.
+4. `docker compose up -d` — swap to the new version.
+5. Poll `http://localhost:8080/health` for ~60s. Healthy → Telegram "✅ deployed". Unhealthy → **auto-rollback** to the previous commit + rebuild, Telegram "⚠️ rolled back".
+
+**Guarantees / notes:**
+- Only *code* moves. `.env`, `data/`, `credentials.json`, `token.json` are gitignored and live on volumes — never touched by a deploy. The DB self-migrates on backend startup (`database/db.py::_ensure_columns`), so schema changes apply with no manual step.
+- A `flock` lock means overlapping cron ticks skip instead of stacking builds.
+- Read access to the private repo is via a **read-only deploy key** (SSH), scoped to this repo only.
+- `main` = what's live. Push WIP to other branches freely; merge to `main` to deploy.
+- One-time setup is done by the Pi's own Claude Code — see the setup prompt kept alongside this project.

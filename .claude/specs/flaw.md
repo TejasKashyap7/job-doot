@@ -32,7 +32,7 @@ the LinkedIn drip thread on app startup.
 
 ## Flaw 2: Resume Tailoring Quality Unverified
 
-**Status:** open
+**Status:** resolved
 
 ### Explanation
 The critic → improver tailor loop runs without errors, but no human has ever read
@@ -47,13 +47,40 @@ improver returns the master resume unchanged and still says "APPROVED". You appl
 to 50 jobs with the same generic resume. Zero callbacks.
 
 ### Solution
-_Not yet resolved._
+Add two mechanical, no-AI checks that run automatically after each resume is
+tailored, so suspect resumes are flagged instead of trusting the critic's
+"APPROVED" blindly. The critic is memoryless (each round is a fresh, independent
+audit), so it is trustworthy — but a single reviewer can still be plain wrong
+once, and these checks are the cheap insurance for that.
+
+1. Change check — compare the tailored resume against the master resume and
+   measure how much of the text is identical. If they are nearly identical, the
+   improver effectively did nothing, so flag it. This catches the case where the
+   critic approves on round one and the untouched master is shipped as "tailored".
+
+2. Skill-coverage check — for each job, take the skills from the locked skill set
+   that the job description mentions, then confirm those skill words actually
+   appear in the tailored resume. A small per-skill alias list handles wording
+   variations (e.g. RAG vs Retrieval-Augmented Generation) so real matches are
+   not missed. If the job asks for a skill Tejas has but it never appears on the
+   page, flag it.
+
+Both checks are pure Python (text-similarity + word matching against the curated
+locked skill set), so they add no Groq calls and no measurable delay, and they
+keep catching regressions on every future daily run — not just once. Results are
+stored on the Resume row and surfaced on the dashboard as a colored tag per job
+(tailored / review / unchanged) plus a "Needs review (N)" queue, mirroring the
+existing Filtered page. Tejas then hand-reviews only the flagged resumes to
+confirm the prose quality — the checks catch the mechanical failures, the human
+confirms the writing. This is the one-time end-to-end quality verification
+(roadmap M3), after which the checks remain as a permanent guardrail. Code build
+is a follow-up task; the approach is locked.
 
 ---
 
 ## Flaw 3: Gmail Watcher Alerts Unverified After Telegram Cleanup
 
-**Status:** open
+**Status:** resolved
 
 ### Explanation
 The Gmail watcher and Telegram bot integration are built. But this has never been
@@ -68,7 +95,20 @@ so Telegram rejects it silently. You never get the alert. You miss the recruiter
 48-hour window.
 
 ### Solution
-_Not yet resolved._
+Add a once-a-day heartbeat message to Telegram — a short summary such as
+"✅ watcher alive, checked N emails today, M recruiter alerts sent." The watcher
+currently fails silently (a wrong chat ID, or a bot Tejas never messaged first,
+means alerts are refused with no error logged anywhere), so the fix is to make
+success visible and let the ABSENCE of the daily heartbeat be the alarm. If a day
+passes with no heartbeat, something is down and Tejas goes and looks — instead of
+only finding out when he misses a real recruiter. The heartbeat also re-proves the
+bot token and chat ID are correctly wired every single day, not just once.
+
+Built deliberately as ONE unified health-signal system shared with Flaw 6 (Pi
+container monitoring): a single daily status ping reports the health of the whole
+pipeline (gmail-watcher + backend + last scrape) rather than two separate
+heartbeat mechanisms doing the same job. Detailed scope of what that unified ping
+monitors is settled in Flaw 6.
 
 ---
 
@@ -123,7 +163,7 @@ submit.
 
 ## Flaw 6: No Health Monitoring for Pi Containers
 
-**Status:** open
+**Status:** resolved
 
 ### Explanation
 If either Docker container on the Pi crashes — OOM kill, OAuth failure, software
@@ -138,27 +178,67 @@ You missed a full day of scraping. Any recruiter emails during that window trigg
 the Gmail watcher — which was also down.
 
 ### Solution
-_Not yet resolved._
+One smart internal heartbeat — the unified daily Telegram ping from Flaw 3. Before
+sending, it actively checks each piece of the pipeline and reports each one, e.g.
+"backend OK / today's scrape OK / watcher OK" (or a failure mark against whatever
+broke). This handles the subtlety that the watcher and backend are separate
+containers: the ping does not just prove the watcher is alive, it independently
+confirms the backend is answering and the daily scrape ran, so a dead backend cannot
+hide behind a healthy watcher. Tejas reads the status on Telegram the next day and
+acts if anything shows a failure.
+
+Accepted limitation (Tejas, cost/complexity call): if the WHOLE Pi or the Cloudflare
+tunnel dies, no ping goes out at all, and catching that relies on Tejas noticing the
+silence himself. That is fine for now — the functionality-to-complexity ratio of
+adding an external watchdog is not worth it yet. Revisit trigger: if crashes become
+frequent, escalate this flaw to add an outside uptime monitor on jobs.marutsut.me
+and/or container auto-restart. Until then, the single internal heartbeat is enough.
 
 ---
 
-## Flaw 7: Pi SD Card Write Wear
+## Flaw 7: Pi Data Loss — Single Device, No Off-Site Backup
 
-**Status:** open
+**Status:** resolved
 
 ### Explanation
-The daily scrape writes hundreds of rows to SQLite, triggering WAL checkpointing —
-repeated write bursts to the SD card. SD cards have limited write cycles. Months of
-daily pipeline runs degrade the card. If it fails, you lose the database, all tailored
-PDFs, and your application history.
+The Pi runs everything off one NVMe SSD, and all data — the jobs database and
+application history — lives only on that one drive. (An earlier version of this
+flaw worried about SD-card write-wear; Tejas has since pivoted to an NVMe SSD for
+exactly that reason, so wear is no longer the concern.) The real risk is that any
+single device can be lost — it can die, be stolen, or be replaced — and with no
+copy anywhere else, the data is gone.
 
 ### Example
-After 18 months of daily runs the SD card develops bad blocks. One morning a scrape
-write hits a bad block and SQLite gets corrupted. You lose all job history, all
-tailored resumes, and application records. There was no backup.
+The NVMe drive fails one morning, or Tejas swaps it for a bigger one, or the Pi is
+lost to theft or a physical accident. Because the only copy lived on that drive,
+all job history and application records vanish. There was no backup elsewhere.
 
 ### Solution
-_Not yet resolved._
+Correction to the premise (Tejas, 2026-07-03): the Pi runs everything on an NVMe
+SSD, NOT an SD card. SSDs tolerate vastly more write cycles than SD cards, so
+write-wear from the daily SQLite writes is effectively a non-issue. The real risk
+that remains is single-device loss of ANY kind — drive death, theft, fire,
+earthquake, or simply swapping the NVMe drive — all of which wipe local data if no
+copy exists elsewhere. No on-Pi fix can survive the whole device being gone, so the
+answer must be off-site.
+
+Solution: an automated monthly cloud backup. Once a month a job snapshots the
+jobs database — the job/market data: companies, JDs, roles, scores, and application
+history — and commits it to a PRIVATE GitHub repo, separate from the code repo.
+Because the copy lives off-site in the cloud, the data survives any physical
+disaster to the Pi and lets Tejas restart exactly where he left off even after
+replacing the NVMe drive or moving to new hardware — no reliance on a single
+physical device. Ethical bonus: it preserves a real-world job-market dataset that
+future developers could reuse.
+
+Guards: the backup contains the jobs DATABASE ONLY. The tailored CV PDFs are
+deliberately NOT backed up — they are personal and fully regenerable from the DB
+via the tailor loop, so storing them wastes space (PDFs are ~1.1GB/year vs ~326MB
+for the DB) and needlessly copies personal resumes to the cloud. Secrets (.env,
+credentials.json, token.json) are never backed up either — they stay off the cloud
+and are regenerated or re-copied on restore. As the DB grows past GitHub's comfort
+zone (a single file over ~100MB is rejected, and the DB reaches ~326MB by year
+one), gzip the snapshot or move backups to Kaggle / object storage.
 
 ---
 

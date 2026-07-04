@@ -17,6 +17,11 @@ HOUR = int(os.getenv("SCRAPE_HOUR", "6"))
 MINUTE = int(os.getenv("SCRAPE_MINUTE", "0"))
 CSV_PATH = os.getenv("JOBS_CSV_PATH", "/app/dummy_jobs.csv")
 
+# Module-level handle so jobs saved in the persistent (SQLAlchemy) jobstore can reach
+# the running scheduler without a lambda/closure — APScheduler must pickle every job
+# it persists, and lambdas/closures are not picklable. Set in start_scheduler().
+_scheduler: BackgroundScheduler | None = None
+
 
 def daily_scrape_job():
     """6am IST: scrape Naukri API and ingest new jobs."""
@@ -36,13 +41,23 @@ def daily_scrape_job():
         db.close()
 
 
+def _reschedule_activity_job():
+    """Daily 00:01 tick: schedule that day's LinkedIn activity jobs. Defined at module
+    level (not a lambda) so the persistent jobstore can serialize it; reaches the live
+    scheduler via the module global set in start_scheduler()."""
+    if _scheduler is not None:
+        schedule_daily_activity(_scheduler, TZ)
+
+
 def start_scheduler() -> BackgroundScheduler:
+    global _scheduler
     # Persist scheduled jobs (calendar reminders!) in the same SQLite file so
     # they survive backend restarts. Daily cron is re-registered explicitly.
     jobstores = {
         "default": SQLAlchemyJobStore(url=DATABASE_URL, tablename="apscheduler_jobs"),
     }
     sched = BackgroundScheduler(timezone=TZ, jobstores=jobstores)
+    _scheduler = sched
     sched.add_job(
         daily_scrape_job,
         trigger=CronTrigger(hour=HOUR, minute=MINUTE, timezone=TZ),
@@ -61,7 +76,7 @@ def start_scheduler() -> BackgroundScheduler:
 
     schedule_daily_activity(sched, TZ)
     sched.add_job(
-        lambda: schedule_daily_activity(sched, TZ),
+        _reschedule_activity_job,
         trigger=CronTrigger(hour=0, minute=1, timezone=TZ),
         id="reschedule_activity", replace_existing=True,
     )
