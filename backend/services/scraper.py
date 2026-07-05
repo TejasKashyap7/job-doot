@@ -13,7 +13,7 @@ import os
 import random
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -271,10 +271,28 @@ LI_JOBS_PER_SEARCH = 3                          # job pages fetched per keyword 
 LI_FETCH_DELAY_RANGE = (20, 75)                 # sec between job-detail fetches (human clicking)
 LI_STARTUP_JITTER_RANGE = (30, 120)             # sec before the very first search after (re)connect
 LI_SEARCH_INTERVAL_RANGE = (30 * 60, 90 * 60)   # sec between searches (was 15–45 min)
+# Active hours (IST): no overnight/late-night fetching — 24/7 activity is a bot tell
+# for a brand-new account. Fetch only between these hours; sleep through the night.
+LI_ACTIVE_START_HOUR = 8    # start at 08:00 IST
+LI_ACTIVE_END_HOUR = 23     # stop after 23:00 IST
+LI_TZ = "Asia/Kolkata"
 
 
 def _next_sleep() -> float:
     return random.uniform(*LI_SEARCH_INTERVAL_RANGE)
+
+
+def _seconds_until_active_window() -> float:
+    """0 if we're inside active hours (08:00–23:00 IST); otherwise seconds to sleep
+    until the next window opens. Keeps the account on a human, diurnal rhythm."""
+    now = datetime.now(ZoneInfo(LI_TZ))
+    if LI_ACTIVE_START_HOUR <= now.hour < LI_ACTIVE_END_HOUR:
+        return 0.0
+    target = now.replace(hour=LI_ACTIVE_START_HOUR,
+                         minute=random.randint(0, 25), second=0, microsecond=0)
+    if now.hour >= LI_ACTIVE_END_HOUR:      # late evening → next morning
+        target += timedelta(days=1)
+    return max(0.0, (target - now).total_seconds())
 
 
 def _linkedin_search(session: requests.Session, keyword: str) -> list[str]:
@@ -389,6 +407,13 @@ def linkedin_drip_loop(db_factory) -> None:
             kw_queue: list[str] = []
 
             while True:  # INNER: normal operation
+                # No overnight fetching — sleep through the night, resume in the morning.
+                off = _seconds_until_active_window()
+                if off > 0:
+                    log.info("LinkedIn drip: outside active hours — sleeping %.1fh until morning", off / 3600)
+                    time.sleep(off)
+                    continue
+
                 if not kw_queue:
                     kw_queue = random.sample(KEYWORDS, len(KEYWORDS))
 
