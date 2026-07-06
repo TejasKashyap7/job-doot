@@ -33,6 +33,9 @@ INTER_CALL_DELAY = 2  # gentle on Groq TPM
 # (critic + improver x up to 3 rounds); auto-tailoring every scored job (>=6) was
 # exhausting the free-tier quota so most CVs silently failed. Tune via env.
 TAILOR_MIN_SCORE = float(os.getenv("TAILOR_MIN_SCORE", "9"))
+# Hard cap on jobs auto-tailored per consumer pass. ~2 tailors is enough to exhaust the
+# Groq free-tier budget, so cap low; the rest wait for the next pass (or use the master).
+TAILOR_MAX_PER_PASS = int(os.getenv("TAILOR_MAX_PER_PASS", "2"))
 
 
 def _read_master_resume() -> str:
@@ -66,34 +69,42 @@ def tailor_for_job(db: Session, job: Job) -> Resume:
     last_improver = None
     iteration = 0
 
-    for rnd in range(1, MAX_ROUNDS + 1):
-        iteration = rnd
-        log.info("[job %d] round %d: critic", job.id, rnd)
-        last_critic = critic.review(current_latex, job.title, job.company, job.raw_description)
-        time.sleep(INTER_CALL_DELAY)
+    tailoring_failed = False
+    try:
+        for rnd in range(1, MAX_ROUNDS + 1):
+            iteration = rnd
+            log.info("[job %d] round %d: critic", job.id, rnd)
+            last_critic = critic.review(current_latex, job.title, job.company, job.raw_description)
+            time.sleep(INTER_CALL_DELAY)
 
-        if last_critic["verdict"] == "APPROVED":
-            log.info("[job %d] approved at round %d", job.id, rnd)
-            break
+            if last_critic["verdict"] == "APPROVED":
+                log.info("[job %d] approved at round %d", job.id, rnd)
+                break
 
-        # Last round: don't bother improving again — we'll compile current as-is
-        if rnd == MAX_ROUNDS:
-            log.info("[job %d] still needs work after %d rounds — accepting current LaTeX",
-                     job.id, MAX_ROUNDS)
-            break
+            # Last round: don't bother improving again — we'll compile current as-is
+            if rnd == MAX_ROUNDS:
+                log.info("[job %d] still needs work after %d rounds — accepting current LaTeX",
+                         job.id, MAX_ROUNDS)
+                break
 
-        log.info("[job %d] round %d: improver (%d shortcomings)",
-                 job.id, rnd, len(last_critic["shortcomings"]))
-        last_improver = improver.improve(
-            current_latex, job.title, job.company, job.raw_description,
-            last_critic["shortcomings"],
-        )
-        new_latex = last_improver["latex"]
-        if new_latex == current_latex:
-            log.warning("[job %d] improver returned identical LaTeX at round %d — stopping early", job.id, rnd)
-            break
-        current_latex = new_latex
-        time.sleep(INTER_CALL_DELAY)
+            log.info("[job %d] round %d: improver (%d shortcomings)",
+                     job.id, rnd, len(last_critic["shortcomings"]))
+            last_improver = improver.improve(
+                current_latex, job.title, job.company, job.raw_description,
+                last_critic["shortcomings"],
+            )
+            new_latex = last_improver["latex"]
+            if new_latex == current_latex:
+                log.warning("[job %d] improver returned identical LaTeX at round %d — stopping early", job.id, rnd)
+                break
+            current_latex = new_latex
+            time.sleep(INTER_CALL_DELAY)
+    except Exception as e:
+        # Groq down/rate-limited (or any agent error): don't lose the job. Fall back to
+        # the master résumé — Tejas's rule: if we can't tailor, use the old CV as-is.
+        tailoring_failed = True
+        log.warning("[job %d] tailoring unavailable (%s) — using master résumé", job.id, e)
+        current_latex = master_latex
 
     # Compile whatever we ended up with. A PDF MUST exist for every tailored job
     # (Flaw 11 ruling: no opportunity is missed — gaps are dashboard metadata, the
@@ -140,6 +151,10 @@ def tailor_for_job(db: Session, job: Job) -> Resume:
         jd_skill_coverage=quality["coverage"],
         created_at=datetime.utcnow(),
     )
+    if tailoring_failed:
+        resume.critic_verdict = "TAILORING UNAVAILABLE"
+        resume.unfixable_items = (resume.unfixable_items or "") + \
+            "\n\n[TAILORING UNAVAILABLE] Groq was rate-limited/down — master résumé used as-is."
     if not compile_ok:
         resume.unfixable_items = (resume.unfixable_items or "") + f"\n\n[COMPILE ERROR]\n{compile_err}"
     db.add(resume)

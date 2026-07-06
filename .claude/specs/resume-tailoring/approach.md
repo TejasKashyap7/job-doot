@@ -16,10 +16,21 @@ silently reset to `scored` with **no CV** — the "day-3, still no CVs for most 
 symptom. Decision (Tejas): **auto-tailor only jobs scoring ≥ 9** (the cream). This
 slashes token spend, stops tailoring from starving scoring/filtering, and lets the few
 top jobs get their CV reliably. Controlled by `TAILOR_MIN_SCORE` (default 9) in
-`agents/tailor_loop.py`; enforced in both `tailor_pending()` and the LinkedIn drip loop.
-Jobs scoring 6–8 stay `scored` and visible; a CV can be made for one on demand via
-`POST /admin/tailor/{job_id}`. Pairs with the role-fit targeting rewrite
+`agents/tailor_loop.py`; enforced in `tailor_pending()`, which the consumer
+(`score_and_tailor_job`) calls. (Post-decoupling the scrapers never tailor — only the
+consumer does.) Jobs scoring 6–8 stay `scored` and visible; a CV can be made for one on
+demand via `POST /admin/tailor/{job_id}`. Pairs with the role-fit targeting rewrite
 (`scoring/approach.md`) so "≥9" means a top **core-AI/R&D** job, not a top applied one.
+
+### Two more guards (2026-07-06, Tejas)
+- **Cap at 2 tailors per pass** (`TAILOR_MAX_PER_PASS`, default 2): ~2 tailorings is
+  enough to exhaust the free tier, so the consumer tailors at most the top 2 ≥9 jobs per
+  pass; the rest wait for the next pass.
+- **Fall back to the master résumé if tailoring can't run.** If Groq is down/rate-limited
+  (or any agent error) during the loop, `tailor_for_job` catches it, uses the **master
+  résumé as-is** (no Groq — just compiles it), and flags the résumé `TAILORING
+  UNAVAILABLE`. Rule: *if we can't tailor, use the old CV* — a job never ends up with no
+  CV at all.
 
 ## Flow
 ```

@@ -9,7 +9,7 @@ from database.db import SessionLocal, DATABASE_URL
 from services.ingest import load_csv
 from services.scraper import scrape_naukri, linkedin_drip_loop, schedule_daily_activity
 from agents.scorer import score_pending
-from agents.tailor_loop import tailor_pending
+from agents.tailor_loop import tailor_pending, TAILOR_MAX_PER_PASS
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def score_and_tailor_job():
     db = SessionLocal()
     try:
         score_result = score_pending(db, limit=SCORE_BATCH)
-        tailor_result = tailor_pending(db)
+        tailor_result = tailor_pending(db, limit=TAILOR_MAX_PER_PASS)
         log.info("Score/tailor pass: score=%s tailor=%s", score_result, tailor_result)
     finally:
         db.close()
