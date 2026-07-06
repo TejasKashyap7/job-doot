@@ -353,3 +353,41 @@ Replaces the rsync workflow. The Pi becomes a **git clone** of the private repo 
 - Read access to the private repo is via a **read-only deploy key** (SSH), scoped to this repo only.
 - `main` = what's live. Push WIP to other branches freely; merge to `main` to deploy.
 - One-time setup is done by the Pi's own Claude Code — see the setup prompt kept alongside this project.
+
+---
+
+## 11. Monthly off-site backup (M7, Flaws 7 & 16)
+
+The DB is backed up monthly to a **separate private repo** so a dead NVMe drive doesn't
+lose the job history. The script (`tools/backup.py`, host `python3` stdlib only) takes a
+**safe SQLite online-backup snapshot** (consistent while the app runs), runs
+`PRAGMA integrity_check`, gzips it, and pushes. Database only — never PDFs or secrets.
+
+**One-time Pi setup:**
+1. Create a separate private repo: `gh repo create TejasKashyap7/job-doot-backup --private`
+2. Write-scoped deploy key for that repo ONLY:
+   ```bash
+   ssh-keygen -t ed25519 -C "job-doot-backup" -f ~/.ssh/job-doot_backup -N ""
+   # ~/.ssh/config:  Host github-backup / HostName github.com / User git /
+   #                 IdentityFile ~/.ssh/job-doot_backup / IdentitiesOnly yes
+   gh repo deploy-key add ~/.ssh/job-doot_backup.pub -R TejasKashyap7/job-doot-backup --title job-doot-backup --allow-write
+   ssh -T git@github-backup   # verify
+   ```
+3. Clone + seed the backup repo:
+   ```bash
+   git clone git@github-backup:TejasKashyap7/job-doot-backup.git ~/job-doot-backup
+   cd ~/job-doot-backup && git config user.email "tejas@local" && git config user.name "job-doot backup"
+   # if empty: git branch -M main && echo backups > README.md && git add . && git commit -m init && git push -u origin main
+   ```
+4. Run once + **restore test** (Flaw 16 — prove it opens):
+   ```bash
+   python3 ~/job-doot/tools/backup.py            # → "[backup] OK: jobs-YYYY-MM.db.gz ... pushed"
+   gunzip -c ~/job-doot-backup/jobs-*.db.gz > /tmp/r.db && sqlite3 /tmp/r.db "select count(*) from jobs"
+   ```
+5. Monthly cron (03:00 on the 1st), independent of the backend:
+   ```cron
+   0 3 1 * * /usr/bin/python3 /home/tejas/job-doot/tools/backup.py >> /home/tejas/job-doot-backup.log 2>&1
+   ```
+
+The write key is scoped to the backup repo — it cannot touch the code repo. Paths default
+to `/home/tejas/...`; override via `JOBDOOT_DB` / `JOBDOOT_BACKUP_REPO` env if different.
