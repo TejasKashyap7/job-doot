@@ -43,6 +43,18 @@
   </div>
 </section>
 
+<section class="sources">
+  <span class="sources-label">Sources</span>
+  {% for s in sources %}
+  <div class="source">
+    <span class="src-dot src-{{ s.state }}" title="{{ s.label }}"></span>
+    <span class="src-name">{{ s.name }}</span>
+    <span class="src-status src-status-{{ s.state }}">{{ s.label }}</span>
+    <a class="src-btn" href="{{ s.cookie_url }}">Update cookie</a>
+  </div>
+  {% endfor %}
+</section>
+
 <form method="get" action="/" class="filters">
   <label class="search-label">Search
     <div class="search-wrap">
@@ -105,7 +117,10 @@
         <td class="company-cell">{{ job.company }}</td>
         <td>{{ job.location or '' }}{% if job.remote_flag %} <span class="tag">remote</span>{% endif %}</td>
         <td>{{ job.salary or '' }}</td>
-        <td><span class="score score-{{ score_class(job.score) }}">{{ '%.1f' % (job.score or 0) }}</span></td>
+        <td>
+          <span class="score score-{{ score_class(job.score) }}">{{ '%.1f' % (job.score or 0) }}</span>
+          {% if job.top_matches or job.top_gaps %}<button type="button" class="why-toggle" data-why="why-{{ job.id }}">why?</button>{% endif %}
+        </td>
         <td><span class="status status-{{ job.status }}">{{ job.status }}</span></td>
         <td>
           {% if job.has_pdf %}
@@ -123,6 +138,16 @@
           {% if job.apply_url %}<a href="{{ job.apply_url }}" target="_blank" rel="noopener">link</a>{% endif %}
         </td>
       </tr>
+      {% if job.top_matches or job.top_gaps %}
+      <tr class="why-row" id="why-{{ job.id }}" hidden>
+        <td colspan="11">
+          <div class="why-box">
+            {% if job.top_matches %}<div class="why-matches"><strong>✓ Matches</strong> {{ job.top_matches | join(' · ') }}</div>{% endif %}
+            {% if job.top_gaps %}<div class="why-gaps"><strong>⚠ Gaps</strong> {{ job.top_gaps | join(' · ') }}</div>{% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endif %}
     {% endfor %}
     </tbody>
   </table>
@@ -159,6 +184,12 @@ document.querySelectorAll('.cal-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     form.action = `/jobs/${btn.dataset.jobId}/calendar`;
     modal.showModal();
+  });
+});
+document.querySelectorAll('.why-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const row = document.getElementById(btn.dataset.why);
+    if (row) row.hidden = !row.hidden;
   });
 });
 </script>

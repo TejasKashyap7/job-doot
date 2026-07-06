@@ -55,6 +55,26 @@ ready / review_needed → applied (manual action from dashboard)
 applied → scored / ready (unapply action from archive)
 ```
 
+## Source health + score transparency (2026-07-06)
+
+### Per-source cookie status + button
+A compact **"Sources"** strip on the dashboard shows each scraping source with a status
+light and an "Update cookie" button:
+- 🟢 **active** — cookie present and not flagged expired
+- 🔴 **expired** — cookie present but the scraper hit a login redirect (alert set)
+- 🔴 **missing** — no cookie on disk
+The button links to that source's cookie page (LinkedIn → `/admin/linkedin-cookie`, which
+has the paste box + a link to the extraction guide). Designed to **generalise**: each
+future source (Naukri, etc.) adds a row with its own status + cookie page — driven by
+`_sources_status()` in `main.py`.
+
+### Score transparency — gaps in a per-row dropdown
+Each job row has a **hidden, click-to-expand "why?" dropdown** showing the scorer's
+`top_matches` (✓) and `top_gaps` (⚠ — including the role-type reason, e.g. "applied at a
+consulting firm — capped"). Hidden by default so the table stays uncluttered; the user
+expands only the rows they want to understand. Uses the existing `Job.top_matches` /
+`Job.top_gaps` fields — no new data, no extra LLM calls.
+
 ## Templates
 All rendered server-side via Jinja2. No JS framework — plain HTML + CSS.
 - `templates/base.html` — shared nav, layout shell

@@ -252,8 +252,27 @@ def _attach_pdf_flag(db: Session, jobs: list[Job]) -> list[dict]:
             "has_pdf": has_pdf,
             # Flaw 2 tailoring tag: ok / review / unchanged / None (no resume yet)
             "confidence": confidence_label(sim, cov) if has_pdf else None,
+            # Score transparency — shown in the per-row "why?" dropdown
+            "top_matches": j.top_matches or [],
+            "top_gaps": j.top_gaps or [],
         })
     return out
+
+
+def _sources_status() -> list[dict]:
+    """Per-source cookie health for the dashboard 'Sources' strip. Generalises to
+    future sources — each gets a row with its own status light + cookie page."""
+    alerts = alerts_svc.get_alerts()
+    if not has_li_at():
+        state, label = "missing", "No cookie"
+    elif "linkedin_cookie_expired" in alerts:
+        state, label = "expired", "Expired"
+    else:
+        state, label = "active", "Active"
+    return [
+        {"name": "LinkedIn", "state": state, "label": label,
+         "cookie_url": "/admin/linkedin-cookie"},
+    ]
 
 
 def _needs_review_count(db: Session) -> int:
@@ -321,6 +340,7 @@ def dashboard(request: Request, db: Session = Depends(get_db),
         "request": request,
         "grouped": grouped.items(),
         "counts": _counts(db),
+        "sources": _sources_status(),
         "filters": {"min_score": min_score, "status": status, "q": q, "review": review},
         "score_class": _score_class,
     })
