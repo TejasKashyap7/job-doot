@@ -122,3 +122,47 @@ a push notification immediately.
 
 **Remaining action (OPEN):** Add a zero-result alert to the scraper once it's built.
 This is a 10-line addition and should be done before Pi deployment.
+
+---
+
+## FLAW-7: LinkedIn drip pacing was too aggressive for a brand-new account
+**Status: RESOLVED — 2026-07-05, pacing overhaul**
+
+**The problem:**
+Live traffic looked too fast. The drip fired a BURST of ~10 requests per search
+(up to 5 jobs × 2 requests each — the `/jobs/view/` page + the guest API — with **no
+delay between them**) every 15–45 min, running 24/7. For a fresh, zero-connection
+dummy account that cadence + the burst pattern is a clear bot signal and risks a ban.
+
+**Resolved by (all named constants in `services/scraper.py`):**
+- 20–75s human pause between per-job fetches (was 0 — a burst).
+- Jobs per search 5 → 3.
+- 30–120s startup jitter so it doesn't fire the instant the cookie loads.
+- Between-search interval widened 15–45 min → 30–90 min.
+- **Active hours 08:00–23:00 IST — no overnight fetching** (24/7 activity is itself a
+  tell); sleeps through the night with a morning jitter, giving a human diurnal rhythm.
+
+---
+
+## FLAW-8: Hugh Janus dummy account is thin/unverified — looks like a scraper
+**Status: OPEN — Tejas hardening the profile manually**
+
+**The problem:**
+The account has no education, ~0 connections, and no organic history. This is the
+single biggest ban signal — a brand-new empty account doing automated job searches
+stands out no matter how well-paced the requests are. Pacing (FLAW-7) reduces the
+request-pattern anomaly but not the account-looks-fake anomaly.
+
+**Plan (manual — LinkedIn does no strict verification, so this is easy):**
+- ✅ Education added — **Bennett University** (2026-07-05). NOTE: this is Tejas's REAL
+  alma mater. Plausible + gives alumni to connect to, BUT links the dummy to his real
+  identity (alumni/PYMK can surface one to the other; a ban leaves a thread back to him).
+  Acceptable for a low-stakes dummy; swap to a different plausible university if cleaner
+  separation is wanted.
+- Build **5–7 connections** and send a few connection requests so it looks lived-in.
+- Lean on the scraper's built-in **activity simulation** (0–2 PYMK connections 9am–1pm,
+  0–2 post likes 6pm–9pm) once LinkedIn is re-enabled, for ongoing organic-looking activity.
+
+**CAUTION:** brand-new accounts have LOW connection-request limits — pace the requests
+(a handful per day, human-timed). Blasting many requests to harden the account can
+itself trigger a restriction. Go slow.

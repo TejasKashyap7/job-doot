@@ -166,10 +166,47 @@ the jobs you've been pulling. Only useful once you have weeks of real data.
 
 ---
 
-## Phase 2 (deferred — do not start)
+## Phase 2 — Data Reliability & Self-Healing
 
-LinkedIn Easy Apply automation. Schema hooks already exist (`Job.easy_apply`,
-`application_attempts` table). Start only after Phase 1 is stable on Pi.
+The reliability layer for the scraping pipeline — designed in
+`.claude/specs/scraper-agent/`, not yet built. Order matters: **sources first**
+(boring, high-ROI), the **self-healing agent second** (fancier, later). Weighted
+separately from the Phase-1 100%.
+
+### M9 — Multi-source "Spies" (data resilience)
+**What it is:** ≥3 independent job sources so one break is a degraded day, not a
+blackout. Each source = its own module, own health state, own repair lane.
+
+| Task | Status |
+|------|--------|
+| LinkedIn spy — cookie drip, paced + active-hours | ✅ live |
+| A no-captcha API spy (e.g. **Adzuna** — free, India coverage, built for programmatic use) | ❌ |
+| Naukri via browser automation (Playwright/Selenium + stealth) OR drop it for the API | ❌ |
+| Per-source isolation — one source's break/repair never blocks the others | ❌ |
+
+**Depends on:** M6. **Higher priority than M10** — the spec says so outright.
+
+### M10 — Self-Healing Scraper Duo (Developer + Auditor)
+**What it is:** the adversarial repair agent — **Developer** rewrites a broken parser,
+an independent **Auditor** judges it cold (asymmetric context), auto-commits on pass,
+escalates bot-walls/cookie-expiry, and evolves via a curated lessons store. Full design
++ 28-flaw pre-mortem in `.claude/specs/scraper-agent/`.
+
+| Task | Status |
+|------|--------|
+| Golden-record schema + canary queries (the oracle) | ❌ |
+| Sensor (failure classifier) + class routing | ❌ |
+| Developer agent (scoped write to `services/sources/**` only) | ❌ |
+| Auditor agent (fresh context, per-field, canary cross-check) | ❌ |
+| Escalation report + Telegram + lessons store + human curation gate | ❌ |
+| Close the 17 open SA-flaws (`scraper-agent/flaws.md`) — many close only by building + measuring | ❌ |
+
+**Depends on:** M9 (needs ≥1 stable source + the multi-source structure first).
+**Note:** does NOT fix bot-walls (recaptcha) — those escalate to a browser spy in M9.
+
+### M11 — LinkedIn Easy Apply automation (deferred)
+Schema hooks already exist (`Job.easy_apply`, `application_attempts` table). Start only
+after Phase 1 is stable on Pi.
 
 ---
 

@@ -5,8 +5,10 @@ BUILT
 
 ## What it does
 Runs each newly ingested job through Groq (Llama 3.3 70B) to produce a relevance
-score and structured metadata. This is the first filter — only jobs scoring ≥6
-proceed to the expensive tailoring loop.
+score and structured metadata. This is the first filter. Jobs scoring ≥6 are shown
+as actionable on the dashboard; only jobs scoring **≥9 are auto-tailored** (cost
+control — see `resume-tailoring/approach.md`). The rubric is tuned to Tejas's actual
+target: **core-AI / R&D roles**, not applied/consulting/wrapper roles.
 
 ## Flow
 ```
@@ -24,8 +26,12 @@ Persist to Job row:
 Status transitions:
     score == 0   → 'rejected'
     score < 6    → 'filtered_out'
-    score >= 6   → 'scored'   ← proceeds to tailoring
+    score >= 6   → 'scored'   ← shown on dashboard as actionable
 ```
+Only `scored` jobs with **score ≥ 9** are auto-tailored (the expensive step). Jobs
+scoring 6–8 stay `scored` and visible; a CV can still be made for them on demand via
+`POST /admin/tailor/{job_id}`. See the tailoring cost gate below and in
+`resume-tailoring/approach.md`.
 
 ## Scoring rubric (locked in prompts.py)
 - 9-10: Strong match, most JD requirements directly covered
@@ -34,6 +40,28 @@ Status transitions:
 - 3-4: Weak match, domain adjacent
 - 1-2: Poor match
 - 0: Out of scope entirely (pure SWE, frontend, data analyst, Android, DevOps without ML)
+
+## Role-fit targeting (2026-07-06) — core-AI / R&D, NOT applied/consulting/wrapper
+
+Tejas is a **core AI / R&D** engineer. Skill-overlap alone is not enough — the *type*
+of role matters, and the old rubric scored applied/consulting roles too high (Infosys
+"GenAI + Cloud + ServiceNow" → 7; Accenture/Capco applied → 8–9). The rubric (in
+`agents/prompts.py`) now layers role-type on top of skill match:
+
+- **REWARD (bias toward 8–10 when skills match):** research / R&D — Research Engineer,
+  Research Scientist, Applied Scientist, ML/DL Research, model **training / fine-tuning**,
+  foundation-model / LLM research, **agentic / agent-building** roles, "Member of
+  Technical Staff" at AI labs/product companies, genuine R&D posts.
+- **PENALIZE (cap low, ≤5–6 even if the skill words match):** "applied AI" at
+  consulting/services firms (Accenture, Capco, Infosys, TCS, Wipro, Cognizant, Deloitte);
+  GenAI-**wrapper** / prompt-plumbing-only; full-stack-with-AI; cloud/backend-with-GenAI-
+  sprinkled (AWS/Azure/ServiceNow integration); data-analyst-labelled-AI.
+- **0 (out of scope):** unchanged — pure SWE/frontend/data-analyst/Android/DevOps-without-ML.
+
+The search **keywords** (in `services/scraper.py`) are also widened toward research/R&D
+titles so those roles enter the funnel; the rubric above then filters applied/consulting
+back down. `top_gaps`/`top_matches` should state the real reason (incl. role-type) so
+scoring is legible, not vague.
 
 ## Key guard
 `LOCKED_SKILL_SET` in `agents/prompts.py` is the single source of truth for what

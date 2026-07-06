@@ -34,14 +34,20 @@ CANDIDATE PROFILE:
 LOCKED SKILL SET:
 {LOCKED_SKILL_SET}
 
-IN-SCOPE ROLES: AI Engineer, ML Engineer, Deep Learning Engineer, Computer Vision Engineer, GenAI Engineer, LLM Engineer, MLOps (light), AI Research roles
+IN-SCOPE ROLES: AI Engineer, ML Engineer, Deep Learning Engineer, Computer Vision Engineer, GenAI/LLM Engineer, MLOps (light), and — MOST preferred — AI Research / R&D roles.
 
-OUT-OF-SCOPE ROLES (score 0 regardless): pure SWE, frontend, backend web dev, data analyst, Android dev, DevOps without ML
+OUT-OF-SCOPE ROLES (score 0 regardless): pure SWE, frontend, backend web dev, data analyst, Android dev, DevOps without ML.
 
-SCORING RUBRIC:
-9-10: Strong match, most JD requirements directly covered
-7-8: Good match, minor gaps learnable quickly
-5-6: Partial match, significant gaps but correct domain
+ROLE-TYPE PREFERENCE (CRITICAL — this candidate targets CORE AI / R&D, not applied/consulting work). Skill overlap alone is NOT enough; weigh the TYPE of role heavily:
+- STRONGLY PREFERRED (allow 8-10 when skills also match): research / R&D — Research Engineer, Research Scientist, Applied Scientist, ML/DL Research, model TRAINING / fine-tuning, foundation-model / LLM research, agentic / agent-building roles, "Member of Technical Staff" at AI labs or product companies, genuine R&D posts.
+- GENUINE CORE ENGINEERING (7-8): roles that actually build or train models / ML systems, not merely call an API.
+- PENALIZE — CAP AT 5-6 even if the skill keywords all match: "applied AI" at consulting/services/IT firms (Accenture, Capco, Infosys, TCS, Wipro, Cognizant, Deloitte); GenAI-WRAPPER / prompt-plumbing-only roles; full-stack-with-AI; cloud/backend roles with GenAI merely "sprinkled" (AWS/Azure/ServiceNow integration, API/backend dev wearing an AI label); data-analyst work labelled as AI. Do NOT reward these highly just because "AI"/"GenAI" appears in the title — they are NOT what the candidate wants.
+When you cap a score for role-type, SAY SO as the FIRST entry in top_gaps, e.g. "Role-type: applied AI at a consulting firm, not core R&D — capped."
+
+SCORING RUBRIC (apply AFTER the role-type judgment above):
+9-10: Strong skill match AND a preferred research / R&D or genuine core-AI role
+7-8: Good match, genuine core AI/ML engineering, minor learnable gaps
+5-6: Partial match, OR a role capped for being applied / consulting / wrapper despite keyword overlap
 3-4: Weak match, domain adjacent but mostly misaligned
 1-2: Poor match, unlikely to pass screening
 0: Out of scope entirely

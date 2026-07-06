@@ -27,14 +27,18 @@ from services.ingest import ingest_rows
 from services.telegram import send as tg_send
 import services.alerts as alerts_svc
 from agents.scorer import score_job, SCORER_DELAY_SEC
-from agents.tailor_loop import tailor_for_job
+from agents.tailor_loop import tailor_for_job, TAILOR_MIN_SCORE
 
 log = logging.getLogger(__name__)
 
 KEYWORDS = [
-    "AI Engineer", "ML Engineer", "Machine Learning Engineer",
-    "Deep Learning Engineer", "Computer Vision Engineer",
-    "GenAI Engineer", "LLM Engineer", "NLP Engineer", "AI Research Engineer",
+    # core AI/ML engineering
+    "AI Engineer", "Machine Learning Engineer", "Deep Learning Engineer",
+    "Computer Vision Engineer", "LLM Engineer", "GenAI Engineer", "NLP Engineer",
+    # research / R&D — the roles Tejas actually targets (rubric filters applied/consulting)
+    "AI Research Engineer", "Machine Learning Researcher", "Research Scientist",
+    "Applied Scientist", "Deep Learning Research", "LLM Research",
+    "Foundation Model", "AI Agent Engineer", "Agentic AI",
 ]
 LOCATIONS = ["Gurgaon", "Delhi", "Noida", "Pune", "Remote"]
 
@@ -449,7 +453,8 @@ def linkedin_drip_loop(db_factory) -> None:
                             if job:
                                 time.sleep(SCORER_DELAY_SEC)
                                 score_job(db, job)
-                                if job.status == "scored":
+                                # Cost gate: auto-tailor only the top jobs (score >= 9).
+                                if job.status == "scored" and (job.score or 0) >= TAILOR_MIN_SCORE:
                                     try:
                                         tailor_for_job(db, job)
                                     except Exception:

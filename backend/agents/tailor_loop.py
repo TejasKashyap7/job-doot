@@ -13,6 +13,7 @@ Always saves the final LaTeX + PDF + critic verdict + changelog into Resume row.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,10 @@ log = logging.getLogger(__name__)
 
 MAX_ROUNDS = 3
 INTER_CALL_DELAY = 2  # gentle on Groq TPM
+# Cost gate: only AUTO-tailor jobs scoring >= this. Tailoring is Groq-expensive
+# (critic + improver x up to 3 rounds); auto-tailoring every scored job (>=6) was
+# exhausting the free-tier quota so most CVs silently failed. Tune via env.
+TAILOR_MIN_SCORE = float(os.getenv("TAILOR_MIN_SCORE", "9"))
 
 
 def _read_master_resume() -> str:
@@ -147,8 +152,10 @@ def tailor_for_job(db: Session, job: Job) -> Resume:
 
 
 def tailor_pending(db: Session, limit: int | None = None) -> dict:
-    """Run tailor loop on every job with status='scored'."""
-    q = db.query(Job).filter(Job.status == "scored").order_by(Job.score.desc(), Job.id)
+    """Run tailor loop on scored jobs at/above the cost gate (TAILOR_MIN_SCORE)."""
+    q = (db.query(Job)
+         .filter(Job.status == "scored", Job.score >= TAILOR_MIN_SCORE)
+         .order_by(Job.score.desc(), Job.id))
     if limit:
         q = q.limit(limit)
     jobs = q.all()

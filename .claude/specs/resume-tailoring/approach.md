@@ -4,9 +4,22 @@
 BUILT
 
 ## What it does
-For each job scoring ≥6, runs a Critic → Improver loop against the master LaTeX
-resume. Produces a job-specific tailored PDF. The master resume is never modified —
-each job gets its own copy stored in the `resumes` table.
+For each job scoring **≥9** (cost gate — see below), runs a Critic → Improver loop
+against the master LaTeX resume. Produces a job-specific tailored PDF. The master
+resume is never modified — each job gets its own copy stored in the `resumes` table.
+
+## Tailoring cost gate (2026-07-06) — auto-tailor only score ≥ 9
+Tailoring is the expensive step (Critic + Improver × up to 3 rounds ≈ 20k+ tokens per
+job). Auto-tailoring **every** scored job (≥6) was exhausting the Groq free-tier quota:
+the first couple of CVs succeeded, then rate limits made the rest fail and the job was
+silently reset to `scored` with **no CV** — the "day-3, still no CVs for most jobs"
+symptom. Decision (Tejas): **auto-tailor only jobs scoring ≥ 9** (the cream). This
+slashes token spend, stops tailoring from starving scoring/filtering, and lets the few
+top jobs get their CV reliably. Controlled by `TAILOR_MIN_SCORE` (default 9) in
+`agents/tailor_loop.py`; enforced in both `tailor_pending()` and the LinkedIn drip loop.
+Jobs scoring 6–8 stay `scored` and visible; a CV can be made for one on demand via
+`POST /admin/tailor/{job_id}`. Pairs with the role-fit targeting rewrite
+(`scoring/approach.md`) so "≥9" means a top **core-AI/R&D** job, not a top applied one.
 
 ## Flow
 ```
