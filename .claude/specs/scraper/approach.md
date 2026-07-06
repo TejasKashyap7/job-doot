@@ -1,7 +1,35 @@
 # Scraper — Approach
 
 ## Status
-NOT STARTED (dummy_jobs.csv placeholder in use)
+BUILT & LIVE — LinkedIn drip active (paced + active-hours, see FLAW-7); Naukri walled
+by recaptcha (see FLAW-5/probe). 2026-07-06: **scraping decoupled from the LLM.**
+
+## Producer/consumer decoupling (2026-07-06) — scraping NEVER depends on the LLM
+Previously the scrapers were coupled to Groq: the LinkedIn drip scored + tailored each
+job *inline*. When the Groq free tier rate-limited, every new job triggered a ~2-min
+retry storm before the loop could advance — so throughput collapsed, AND
+collected-but-unscored jobs sat at status `scraped` (hidden from the dashboard). That
+was the "far fewer than ~24/day" symptom.
+
+Fixed by splitting producers from a single consumer:
+- **Producers (NO LLM — run full-speed regardless of Groq):**
+  - **LinkedIn drip** — scrape + `ingest_rows` only → jobs land as `scraped`.
+  - **Naukri daily 06:00 batch** — `scrape_naukri` only → jobs land as `scraped`.
+- **Consumer — `score_and_tailor_job` on a ~20-min interval (APScheduler):** drains the
+  `scraped` queue → `score_pending(limit)` then `tailor_pending` (auto-tailor only ≥9).
+  Groq-gated: after repeated Groq failures it stops the batch and retries next tick.
+- **Result:** a Groq outage can only *delay scoring*, never *reduce jobs collected*.
+  Jobs wait as `scraped` (collected + counted). The dashboard shows an
+  **"awaiting scoring"** count so collected-unscored jobs are never invisible.
+- `services/scraper.py` no longer imports the scorer/tailor — the decoupling is real.
+
+**Future — Naukri moves batch → drip once it's a logged-in source.** Naukri is a
+batch today only because the (now-walled) access was the *anonymous* API — no account
+to protect. Once the member-cookie trick works (a logged-in dummy Naukri account, like
+Hugh Janus for LinkedIn), Naukri inherits the same ban risk and should run as a
+**human-paced drip**, exactly like LinkedIn. Under producer/consumer that's just another
+producer filling the `scraped` queue — the consumer is unchanged. (Parked to the Naukri
+member-cookie test; see [[project-data-sources]].)
 
 ## What we're building
 A daily keyword-based job scraper that pulls listings from Naukri.com and LinkedIn
@@ -77,21 +105,24 @@ loop forever:
     extract up to 5 job listing URLs from results HTML
     for each listing URL:
         fetch full job page → parse title, company, JD, apply_url
-        ingest immediately → score immediately → tailor if scored ≥6
+        ingest immediately (status `scraped`) — NO LLM here
     sleep _next_sleep() seconds
+    # scoring + tailoring are handled separately by the consumer (score_and_tailor_job)
 ```
 
 ## Data flow (combined)
 
 ```
-06:00 IST daily:
-    Naukri batch → ingest → score_pending → tailor_pending
+PRODUCERS (no LLM — fill the queue):
+    06:00 IST daily:   Naukri batch → ingest (status `scraped`)
+    Continuous drip:   one LinkedIn listing → ingest (status `scraped`)
 
-Continuous (LinkedIn drip):
-    one listing → ingest → score_job → tailor_for_job (if score ≥6)
+CONSUMER (Groq-gated — drains the queue, every ~20 min):
+    score_and_tailor_job → score_pending(limit) → tailor_pending (auto-tailor ≥9 only)
 ```
 
-Both paths use the same ingest/score/tailor functions — no duplication.
+Producers never call the LLM, so a Groq outage cannot slow or stop collection —
+it can only delay scoring. Jobs wait as `scraped` (collected + counted).
 
 ## CSV schema (must match existing ingest)
 ```

@@ -3,6 +3,7 @@ import logging
 import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from database.db import SessionLocal, DATABASE_URL
 from services.ingest import load_csv
@@ -16,6 +17,10 @@ TZ = os.getenv("SCHEDULER_TIMEZONE", "Asia/Kolkata")
 HOUR = int(os.getenv("SCRAPE_HOUR", "6"))
 MINUTE = int(os.getenv("SCRAPE_MINUTE", "0"))
 CSV_PATH = os.getenv("JOBS_CSV_PATH", "/app/dummy_jobs.csv")
+# Consumer cadence: how often the score/tailor pass drains the scraped queue, and how
+# many jobs it processes per pass (bounded so a Groq retry-storm can't run away).
+SCORE_INTERVAL_MIN = int(os.getenv("SCORE_INTERVAL_MIN", "20"))
+SCORE_BATCH = int(os.getenv("SCORE_BATCH", "10"))
 
 # Module-level handle so jobs saved in the persistent (SQLAlchemy) jobstore can reach
 # the running scheduler without a lambda/closure — APScheduler must pickle every job
@@ -24,19 +29,26 @@ _scheduler: BackgroundScheduler | None = None
 
 
 def daily_scrape_job():
-    """6am IST: scrape Naukri API and ingest new jobs."""
-    log.info("Daily scrape tick — running Naukri batch")
+    """PRODUCER — 6am IST Naukri batch: scrape + ingest ONLY. Scoring/tailoring is the
+    consumer's job (score_and_tailor_job), so a Groq outage never blocks scraping."""
+    log.info("Daily scrape tick — running Naukri batch (ingest only)")
     db = SessionLocal()
     try:
         ingest_result = scrape_naukri(db)
         log.info("Daily ingest result: %s", ingest_result)
+    finally:
+        db.close()
 
-        if ingest_result.get("inserted", 0) > 0:
-            score_result = score_pending(db)
-            log.info("Daily score result: %s", score_result)
 
-            tailor_result = tailor_pending(db)
-            log.info("Daily tailor result: %s", tailor_result)
+def score_and_tailor_job():
+    """CONSUMER — drains the scraped queue on an interval, independent of the scrapers.
+    Groq-gated: score_pending stops the batch after repeated Groq failures and retries
+    next tick, so the producers keep collecting even when the free tier is exhausted."""
+    db = SessionLocal()
+    try:
+        score_result = score_pending(db, limit=SCORE_BATCH)
+        tailor_result = tailor_pending(db)
+        log.info("Score/tailor pass: score=%s tailor=%s", score_result, tailor_result)
     finally:
         db.close()
 
@@ -62,6 +74,12 @@ def start_scheduler() -> BackgroundScheduler:
         daily_scrape_job,
         trigger=CronTrigger(hour=HOUR, minute=MINUTE, timezone=TZ),
         id="daily_scrape",
+        replace_existing=True,
+    )
+    sched.add_job(
+        score_and_tailor_job,
+        trigger=IntervalTrigger(minutes=SCORE_INTERVAL_MIN),
+        id="score_and_tailor",
         replace_existing=True,
     )
     sched.start()

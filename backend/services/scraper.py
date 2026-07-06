@@ -26,8 +26,8 @@ from database.models import Job
 from services.ingest import ingest_rows
 from services.telegram import send as tg_send
 import services.alerts as alerts_svc
-from agents.scorer import score_job, SCORER_DELAY_SEC
-from agents.tailor_loop import tailor_for_job, TAILOR_MIN_SCORE
+# NOTE: this module (the scrapers) deliberately does NOT import the scorer/tailor.
+# Scraping is a pure producer — the LLM never runs here. See scraper/approach.md.
 
 log = logging.getLogger(__name__)
 
@@ -439,30 +439,17 @@ def linkedin_drip_loop(db_factory) -> None:
 
                     alerts_svc.clear_alert("linkedin_cookie_expired")
 
+                    # PRODUCER: ingest only. No LLM here — scoring/tailoring is the
+                    # consumer's job (scheduler.score_and_tailor_job), so a Groq outage
+                    # can never slow or stop collection. Jobs wait as 'scraped'.
                     db = db_factory()
                     try:
                         result = ingest_rows(db, [job_dict])
                         if result["inserted"] > 0:
-                            h = _job_hash(
-                                job_dict.get("title", ""),
-                                job_dict.get("company", ""),
-                                job_dict.get("apply_url", ""),
-                                job_dict.get("raw_description", ""),
-                            )
-                            job = db.query(Job).filter(Job.source_hash == h).first()
-                            if job:
-                                time.sleep(SCORER_DELAY_SEC)
-                                score_job(db, job)
-                                # Cost gate: auto-tailor only the top jobs (score >= 9).
-                                if job.status == "scored" and (job.score or 0) >= TAILOR_MIN_SCORE:
-                                    try:
-                                        tailor_for_job(db, job)
-                                    except Exception:
-                                        log.exception("Tailor failed for job %d — resetting to scored", job.id)
-                                        job.status = "scored"
-                                        db.commit()
+                            log.info("LinkedIn drip: ingested '%s' @ %s (awaiting scoring)",
+                                     job_dict.get("title", ""), job_dict.get("company", ""))
                     except Exception:
-                        log.exception("Drip: ingest/score failed for %s", url)
+                        log.exception("Drip: ingest failed for %s", url)
                     finally:
                         db.close()
 

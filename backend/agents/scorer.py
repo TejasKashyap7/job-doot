@@ -66,13 +66,23 @@ def score_pending(db: Session, limit: int | None = None) -> dict:
     log.info("Scoring %d pending job(s)", len(jobs))
 
     counts = {"scored": 0, "filtered_out": 0, "rejected": 0, "errors": 0}
+    consecutive_fail = 0
     for i, job in enumerate(jobs):
         try:
             score_job(db, job)
             counts[job.status] = counts.get(job.status, 0) + 1
+            consecutive_fail = 0
         except Exception as e:
             log.exception("Scoring failed for job %d: %s", job.id, e)
             counts["errors"] += 1
+            consecutive_fail += 1
+            # Groq likely rate-limited/down — stop this pass instead of retry-storming
+            # the whole batch. Remaining jobs stay 'scraped' for the next pass.
+            if consecutive_fail >= 2:
+                log.warning("Groq unavailable — ending scoring pass after %d consecutive "
+                            "failures; %d job(s) remain 'scraped' for the next pass",
+                            consecutive_fail, len(jobs) - i - 1)
+                break
         if i < len(jobs) - 1:
             time.sleep(SCORER_DELAY_SEC)
     if counts["errors"]:

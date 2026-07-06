@@ -279,8 +279,10 @@ def _counts(db: Session) -> dict:
     active = db.query(Job).filter(Job.status.in_(ACTIVE_STATUSES)).count()
     archive = db.query(Job).filter(Job.status == "applied").count()
     filtered = db.query(Job).filter(Job.status == "filtered_out").count()
+    # Collected but not yet scored — visible so a Groq backlog never looks like "missing jobs".
+    pending = db.query(Job).filter(Job.status == "scraped").count()
     return {"active": active, "archive": archive, "filtered": filtered,
-            "needs_review": _needs_review_count(db)}
+            "pending": pending, "needs_review": _needs_review_count(db)}
 
 
 # ---------------- Dashboard pages ----------------
