@@ -86,3 +86,22 @@ SQLite `VACUUM` rewrites the entire DB file to reclaim space after deletions.
 On a 300MB DB this takes ~5-10 seconds and causes a brief write lock.
 Running it at 02:00 IST Sunday means zero overlap with normal usage.
 Run VACUUM once a month (first Sunday of month), not every week.
+
+## Off-site backup (Flaws 7 & 16, M7) — monthly, DB-only, safe + verified
+The only copy of the data lives on one NVMe drive; a monthly off-site backup makes a
+single-device loss survivable (Flaw 7). Design:
+- **What:** the jobs DATABASE only (companies/JDs/roles/scores/history). NOT the tailored
+  PDFs (personal + regenerable, ~1.1GB/yr) and NEVER secrets.
+- **Where:** a SEPARATE private GitHub repo (e.g. `job-doot-backup`), cloned on the Pi at
+  `~/job-doot-backup`. Access via a **write-enabled deploy key scoped to that repo only**
+  (distinct from the read-only code deploy key — it cannot touch the code repo).
+- **How (safe snapshot, Flaw 16):** `tools/backup.py` (host `python3`, stdlib only — no
+  venv/app deps). Uses SQLite's **online backup API** for a consistent hot copy while the
+  app runs, then `PRAGMA integrity_check` (abort if not "ok"), gzips it into the backup
+  repo, and commits/pushes. Filename `jobs-YYYY-MM.db.gz` (monthly overwrite of the month).
+- **When:** Pi cron, monthly (e.g. `0 3 1 * *` — 03:00 on the 1st). Independent of the app
+  so a backend crash at month-end doesn't skip it.
+- **Restore test (Flaw 16, one-time):** `gunzip -c jobs-YYYY-MM.db.gz > /tmp/r.db &&
+  sqlite3 /tmp/r.db "select count(*) from jobs"` — prove the backup actually opens.
+- **Size guard:** DB reaches ~326MB/yr; gzip keeps it well under GitHub's 100MB/file limit
+  for now. Move to Kaggle/object storage if it ever grows past that. See [[project-pi-nvme]].
