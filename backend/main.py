@@ -19,6 +19,7 @@ from services.ingest import ingest_rows, load_csv
 from services.auth import COOKIE_NAME, check_password, make_cookie_value, require_login
 import services.alerts as alerts_svc
 from services.scraper import save_li_at, has_li_at
+from services.watcher_health import watcher_status
 from agents.scorer import score_pending, score_job
 from agents.tailor_loop import tailor_pending, tailor_for_job
 from agents.quality_check import confidence_label
@@ -269,9 +270,13 @@ def _sources_status() -> list[dict]:
         state, label = "expired", "Expired"
     else:
         state, label = "active", "Active"
+    w = watcher_status()
     return [
         {"name": "LinkedIn", "state": state, "label": label,
          "cookie_url": "/admin/linkedin-cookie"},
+        {"name": "Gmail watcher",
+         "state": "active" if w["state"] == "running" else "down",
+         "label": w["label"], "cookie_url": None},
     ]
 
 

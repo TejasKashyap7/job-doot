@@ -210,6 +210,49 @@ after Phase 1 is stable on Pi.
 
 ---
 
+## To Discuss (parked — do not build until discussed)
+
+### D1 — Claude-powered agents alongside Groq (dual-brain)
+**Idea (2026-07-06):** Tejas has a Claude Pro subscription with spare quota and is
+comfortable using it for this project. Instead of relying only on Groq free tier,
+make the agent layer **provider-pluggable**: agents can run on (a) Groq key (current),
+(b) Claude Code subscription (headless `claude -p` / Agent SDK / subagents feature),
+or (c) a Claude API key. Likely shape: Groq stays the high-volume workhorse
+(first-pass scoring of every scraped JD), Claude handles the low-volume high-value
+work (final evaluation + resume tailoring for shortlisted jobs, possibly with a
+compile-and-inspect loop). Fall back to Groq if Claude quota/token fails.
+
+**Known facts so far (verified 2026-07-06, re-verify before building):**
+- Subscription CANNOT be used as a raw API key (Messages API needs paid credits).
+- Headless path: `claude setup-token` on the Mac → long-lived OAuth token →
+  `CLAUDE_CODE_OAUTH_TOKEN` on the Pi → scheduler shells out to `claude -p`.
+  (`setup-token` has a known ARM64 bug — generate on Mac, not on Pi.)
+- Claude Code CLI runs on Linux ARM64 (Pi 5 OK).
+- Quota: headless runs draw on the subscription pool (5-hr windows + weekly caps);
+  Anthropic appears to be moving headless/SDK use to a separate metered monthly
+  credit per plan (~mid-June 2026 change; figures unconfirmed). Keep volume to a
+  few calls/day = "ordinary individual usage" and within ToS spirit.
+
+**Open questions (the "another day" list):** exact login/token provisioning flow on
+the Pi, call contract (prompt in / JSON out), which agents move to Claude first,
+quota budgeting + Groq fallback trigger, Agent SDK vs plain `claude -p`, cost if
+moved to a paid API key instead.
+
+### D2 — Adaptations from MadsLorentzen/ai-job-search (evaluated 2026-07-06)
+Repo review found these candidate borrowings (their manual craft steps → our factory):
+- **PDF compile-and-visually-inspect loop** — read the rendered PDF, check page
+  count / orphaned titles / fonts, iterate (pairs naturally with D1 Claude agents).
+- **Drafter–reviewer split** — fresh-context critic agent reviews tailored output.
+- **Relevance-weighted cutting** — when resume overflows, cut lines scored by
+  JD-relevance × uniqueness, not oldest-first.
+- **Explicit scoring rubric bands** — score thresholds mapped to actions.
+- **Upskill gap report** — aggregate JDs of poorly-scored jobs into a learn-next
+  list (overlaps M8 skills-edge dashboard).
+- ~~LinkedIn `jobs-guest` public endpoints~~ — **ruled out**: no job descriptions
+  (tested earlier); cookie approach stays.
+
+---
+
 ## Progress Tracker
 
 | Milestone | Weight | Status | Running Total |
@@ -227,4 +270,4 @@ _Extra (not in original plan): auto-deploy pipeline + self-service LinkedIn cook
 
 ---
 
-_Last updated: 2026-07-05_
+_Last updated: 2026-07-06_

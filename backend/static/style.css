@@ -713,11 +713,11 @@ dialog .row button[type=button]:hover { background: var(--bg-hover); color: var(
 .source { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 .src-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .src-active  { background: var(--success); box-shadow: 0 0 6px rgba(61,220,151,0.6); }
-.src-expired, .src-missing { background: var(--danger); box-shadow: 0 0 6px rgba(255,93,108,0.6); }
+.src-expired, .src-missing, .src-down { background: var(--danger); box-shadow: 0 0 6px rgba(255,93,108,0.6); }
 .src-name { font-weight: 600; color: var(--text); }
 .src-status { font-size: 11.5px; }
 .src-status-active { color: var(--success); }
-.src-status-expired, .src-status-missing { color: var(--danger); }
+.src-status-expired, .src-status-missing, .src-status-down { color: var(--danger); }
 .src-btn {
   font-size: 12px; font-weight: 600; color: var(--accent);
   background: var(--accent-soft); border: 1px solid transparent;

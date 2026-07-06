@@ -50,7 +50,7 @@
     <span class="src-dot src-{{ s.state }}" title="{{ s.label }}"></span>
     <span class="src-name">{{ s.name }}</span>
     <span class="src-status src-status-{{ s.state }}">{{ s.label }}</span>
-    <a class="src-btn" href="{{ s.cookie_url }}">Update cookie</a>
+    {% if s.cookie_url %}<a class="src-btn" href="{{ s.cookie_url }}">Update cookie</a>{% endif %}
   </div>
   {% endfor %}
 </section>

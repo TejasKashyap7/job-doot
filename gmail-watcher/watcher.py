@@ -32,6 +32,9 @@ POLL_INTERVAL = int(os.getenv("GMAIL_POLL_SEC", "7200"))  # 2 hours
 MAX_RESULTS = int(os.getenv("GMAIL_MAX_RESULTS", "50"))
 TOKEN_PATH = os.getenv("GOOGLE_TOKEN_PATH", "/app/data/token.json")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////app/data/jobs.db")
+# Cross-container liveness (Flaw 15): the backend heartbeat + dashboard read this file to
+# show whether the watcher is alive. Written each poll cycle to the shared data volume.
+WATCHER_HEARTBEAT_PATH = Path(DATABASE_URL.split("///")[-1]).parent / "watcher_last_seen.txt"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -275,6 +278,14 @@ def poll_once(svc) -> None:
         time.sleep(2)  # gentle on Groq TPM
 
 
+def _touch_heartbeat() -> None:
+    """Mark the watcher alive for the backend heartbeat + dashboard light (Flaw 15)."""
+    try:
+        WATCHER_HEARTBEAT_PATH.write_text(str(int(time.time())))
+    except OSError:
+        log.warning("could not write watcher heartbeat", exc_info=True)
+
+
 def main() -> None:
     Base.metadata.create_all(_engine)  # safe — backend will have created table already
     log.info("gmail-watcher starting (poll every %ds)", POLL_INTERVAL)
@@ -284,6 +295,7 @@ def main() -> None:
             poll_once(svc)
         except Exception:
             log.exception("poll cycle crashed — sleeping then retrying")
+        _touch_heartbeat()  # loop is alive, even if this cycle errored
         time.sleep(POLL_INTERVAL)
 
 

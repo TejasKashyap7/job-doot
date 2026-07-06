@@ -435,3 +435,83 @@ _Not yet resolved._ Deliberately deferred to the END — after the pipeline's va
 verified (M3 quality review) and the feature set is stable, do one dedicated UI/UX
 polish pass: visual hierarchy, consistent components across pages, mobile refinement,
 and proper empty / loading / error / success states. Not a blocker for anything else.
+
+---
+
+## Flaw 14: The Daily Heartbeat Can Be Buried in Telegram Noise
+
+**Status:** resolved
+
+### Explanation
+The whole point of the daily heartbeat is "silence = alarm" — if no ping arrives, you
+know something broke. But that only works if you'd actually NOTICE a missing message.
+Tejas is in many busy Telegram channels (1M+ messages), so the bot's DMs already get
+buried. If the heartbeat is just another buried message, a missing one is invisible too —
+and the alarm fails silently, defeating the entire feature.
+
+### Example
+The Pi dies on a Tuesday and the heartbeat stops. But a missing ping looks exactly like
+any other quiet day in a flooded Telegram — Tejas never notices. Three days later he opens
+the dashboard and finds it's been down the whole time. The heartbeat gave him nothing.
+
+### Solution
+Rely on the daily Telegram heartbeat directly — no external monitor. Tejas has cleared
+out the unnecessary Telegram channels (movie/spam groups), so the bot's DMs are no longer
+buried; the daily ping is now visible and he commits to checking it each day. That
+restores "silence = alarm" — a missing ping is noticeable in a clean inbox. Accepted
+residual (Tejas's call): detecting the ABSENCE of a message still relies on him noticing
+it. Revisit trigger: if a real outage is ever missed this way, add an external
+dead-man's-switch (e.g. healthchecks.io) that actively alerts on a missing daily ping.
+
+---
+
+## Flaw 15: The Heartbeat Can't See the Gmail Watcher
+
+**Status:** resolved
+
+### Explanation
+The heartbeat runs inside the backend container and reports what the backend can see
+(jobs collected, scored, scraper cookie). But the Gmail watcher is a SEPARATE container.
+If the watcher dies, the backend heartbeat still looks perfectly healthy — so a dead
+watcher (missed recruiter emails) goes completely undetected.
+
+### Example
+The watcher container crashes. The backend is fine, so the daily heartbeat says "all good."
+Meanwhile a recruiter emails; the watcher never classifies it, and you miss the 48-hour
+reply window — with a "healthy" heartbeat giving you false confidence the whole time.
+
+### Solution
+The gmail-watcher writes a small "last-seen" timestamp to the shared `data/` volume on
+each poll cycle (both containers already mount `data/`). Two things read it: (1) the daily
+Telegram heartbeat reports watcher status — 🟢 running if the timestamp is recent, 🔴
+down/stale if it hasn't checked in within a threshold (a few × its poll interval); and (2)
+the dashboard shows a **green/red watcher-health light** (alongside the source status), so
+a dead watcher is visible in the UI too, not only in the daily ping. This gives real
+cross-container liveness without turning the watcher into a web server.
+
+---
+
+## Flaw 16: The Backup May Be Inconsistent and Has Never Been Restore-Tested
+
+**Status:** resolved
+
+### Explanation
+The monthly backup copies the SQLite database to a private GitHub repo. Two risks: (1)
+SQLite runs in WAL mode, so copying the `.db` file while the app is mid-write can capture
+a torn, half-written snapshot that won't open. (2) A backup you have never actually
+restored from may be silently broken — you find out only when you desperately need it.
+
+### Example
+The NVMe drive dies. You go to restore last month's backup — but it was copied mid-scrape,
+so the `.db` is corrupt and won't open. You have a backup that doesn't work, which is worse
+than knowing you had none.
+
+### Solution
+Keep the monthly cadence (losing at most a month is acceptable), but take the snapshot the
+SAFE way and verify it. Use SQLite's built-in online backup (`sqlite3 jobs.db ".backup
+out.db"`, or `VACUUM INTO`) so the copy is consistent even while the app is writing
+(WAL-safe) — no downtime. Before pushing, run `PRAGMA integrity_check` on the snapshot,
+and do a one-time restore test (open the backed-up file, count rows) so the backup is
+known-good, not hoped-good. This makes "last month's backup" genuinely dependable — a
+torn/corrupt snapshot can no longer silently make it useless.
+
