@@ -41,7 +41,7 @@ def main() -> int:
         print(f"[backup] backup repo not a git clone: {BACKUP_REPO}", file=sys.stderr)
         return 1
 
-    stamp = datetime.datetime.utcnow().strftime("%Y-%m")  # monthly file, overwritten in-month
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")  # monthly file, overwritten in-month
     tmp = Path("/tmp") / f"jobs-{stamp}.db"
 
     # 1. Consistent hot snapshot (safe even while the app writes to the live DB).

@@ -1,14 +1,14 @@
 # Job-Doot — Project Roadmap
 
 > Update this file as milestones are completed.
-> Current overall progress: **65% done**
+> Current overall progress: **75% done**
 
 ---
 
 ## Overall Progress
 
 ```
-[████████████████████░░░░░░░░░░]  65%
+[██████████████████████░░░░░░░░]  75%
 ```
 
 ---
@@ -135,16 +135,16 @@ actually deployed and reachable.
 
 ---
 
-### M7 — Ops Hardening `+10%` → brings total to **90%**
+### M7 — Ops Hardening `+10%` → brings total to **75%** ✅ DONE (2026-07-06)
 
 **What it is:** Make sure you know when things break, and that a dead drive
 doesn't destroy months of data.
 
 | Task | Status |
 |------|--------|
-| Daily Telegram heartbeat: reports backend + scrape + watcher status; silence = alarm (Flaws 3 & 6, unified) | ❌ |
-| Off-site backup: monthly DB snapshot to a private GitHub repo (Flaw 7) | ❌ |
-| Verify backup actually restores (test it once) | ❌ |
+| Daily Telegram heartbeat: backend + collection/scoring + LinkedIn + watcher status; silence = alarm (Flaws 3/6/14/15) | ✅ |
+| Off-site backup: monthly safe DB snapshot → private repo `job-doot-backup` (Flaws 7 & 16) | ✅ |
+| Verify backup actually restores (restore test: 33 rows, integrity ok) | ✅ |
 
 **Depends on:** M6 (Pi must be deployed first)
 
@@ -263,8 +263,8 @@ Repo review found these candidate borrowings (their manual craft steps → our f
 | M4 — Notifications | 5% | ⏳ Telegram delivery proven (deploy pings); test pending | 40% |
 | M5 — Dashboard Polish | 5% | ✅ Done | 45% |
 | M6 — Pi Deployed | 20% | ✅ Done | 65% |
-| M7 — Ops Hardening | 10% | ❌ Decisions locked (heartbeat/backup); build pending | 65% |
-| M8 — Market Insights | 10% | ❌ Not started | 65% |
+| M7 — Ops Hardening | 10% | ✅ Done (heartbeat live + backup restore-verified, 33 rows) | 75% |
+| M8 — Market Insights | 10% | ❌ Not started | 75% |
 
 _Extra (not in original plan): auto-deploy pipeline + self-service LinkedIn cookie page — both live._
 
