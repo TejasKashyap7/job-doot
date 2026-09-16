@@ -10,6 +10,8 @@
     <a href="/filtered">Filtered ({{ counts.filtered }})</a>
     <a href="/jobs?review=1">Needs review ({{ counts.needs_review }})</a>
     <a href="/insights" class="active">Insights</a>
+    {% if current_user.is_admin %}<a href="/admin">Admin</a>{% endif %}
+    <span class="whoami">{{ current_user.username }}</span>
     <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
   </nav>
 </header>

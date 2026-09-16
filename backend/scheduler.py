@@ -11,7 +11,7 @@ from services.scraper import scrape_naukri, linkedin_drip_loop, schedule_daily_a
 from agents.scorer import score_pending
 from agents.tailor_loop import tailor_pending, TAILOR_MAX_PER_PASS
 from datetime import datetime, timedelta
-from database.models import Job
+from database.models import Job, JobUserState
 from services.telegram import send as tg_send
 from services.watcher_health import watcher_status
 import services.alerts as alerts_svc
@@ -67,9 +67,12 @@ def heartbeat_job():
     try:
         since = datetime.utcnow() - timedelta(hours=24)
         collected = db.query(Job).filter(Job.date_scraped >= since).count()
-        pending = db.query(Job).filter(Job.status == "scraped").count()
-        scored = db.query(Job).filter(Job.status == "scored").count()
-        ready = db.query(Job).filter(Job.status.in_(("ready", "review_needed"))).count()
+        # Aggregated across all users — this is the system-operator heartbeat, not
+        # a per-user one (see .claude/specs/multi-user/approach.md).
+        scored_job_ids = db.query(JobUserState.job_id.distinct())
+        pending = db.query(Job).filter(~Job.id.in_(scored_job_ids)).count()
+        scored = db.query(JobUserState).filter(JobUserState.status == "scored").count()
+        ready = db.query(JobUserState).filter(JobUserState.status.in_(("ready", "review_needed"))).count()
     finally:
         db.close()
 

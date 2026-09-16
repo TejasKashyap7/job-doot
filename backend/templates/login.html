@@ -5,7 +5,8 @@
   <h1>Job Hunter</h1>
   <p class="sub">Sign in to continue</p>
   <form method="post" action="/login">
-    <input type="password" name="password" placeholder="password" autofocus required>
+    <input type="text" name="username" placeholder="username" autofocus required autocapitalize="off">
+    <input type="password" name="password" placeholder="password" required>
     <button type="submit">Sign in</button>
     {% if error %}<p class="err">{{ error }}</p>{% endif %}
   </form>

@@ -9,7 +9,6 @@ import logging
 import re
 from typing import TypedDict
 
-from agents.prompts import IMPROVER_SYSTEM
 from services.groq_client import chat_text
 
 log = logging.getLogger(__name__)
@@ -47,9 +46,9 @@ def _parse(raw: str, fallback_latex: str) -> ImproverResult:
     )
 
 
-def improve(latex_resume: str, job_title: str, company: str, jd: str,
-            shortcomings: list[dict]) -> ImproverResult:
-    user = (
+def improve(system_prompt: str, latex_resume: str, job_title: str, company: str, jd: str,
+            shortcomings: list[dict], api_keys: list[str] | None = None) -> ImproverResult:
+    user_msg = (
         f"JOB TITLE: {job_title}\n"
         f"COMPANY: {company}\n\n"
         f"JOB DESCRIPTION:\n{jd}\n\n"
@@ -60,5 +59,5 @@ def improve(latex_resume: str, job_title: str, company: str, jd: str,
         f"Rewrite the LaTeX to address the shortcomings above, obeying the absolute rules. "
         f"Use the exact delimiter format specified."
     )
-    raw = chat_text(IMPROVER_SYSTEM, user, temperature=0.3, max_tokens=6000)
+    raw = chat_text(system_prompt, user_msg, api_keys=api_keys, temperature=0.3, max_tokens=6000)
     return _parse(raw, fallback_latex=latex_resume)

@@ -1,48 +1,28 @@
-"""System prompts and shared constants for the three Groq agents.
+"""System prompts for the Groq/Ollama agents.
 
-Keep this file as the single source of truth — scorer, critic, and improver
-all reference LOCKED_SKILL_SET from here. Editing in one place keeps the
-prompts consistent. Project facts live in project_library.py (same rule:
-update the library, never let agents invent)."""
+SCORER_SYSTEM and IMPROVER_SYSTEM used to be hardcoded constants (one candidate,
+Tejas). Multi-user (see .claude/specs/multi-user/approach.md) moved that profile
+data onto each `User` row in the DB, so these are now functions that render a
+user's own candidate_profile / locked_skill_set / project_library / role_type_prefs
+into the prompt at call time — same text structure as before, just parameterized.
 
-from agents.project_library import PROJECT_LIBRARY
+CRITIC_SYSTEM and EMAIL_CLASSIFIER_SYSTEM stay as constants: neither references
+candidate-specific facts, so there's nothing to parameterize.
+"""
 
-LOCKED_SKILL_SET = """\
-Languages: Python (primary), C++, AppScript
-LLM & GenAI: Groq (Llama-family models), Google Gemini, LangChain, LangGraph, MCP (Model Context Protocol — built a custom MCP server), multi-agent systems (critic/improver loops), RAG systems, Source-Grounded QA, Hallucination Mitigation (verbatim-evidence checking, constrained generation), prompt engineering
-Vector DBs & Embeddings: ChromaDB, Pinecone, FAISS, sentence-transformers (LaBSE cross-lingual, MiniLM), Google Gemini embeddings
-Indic & Speech AI: Sarvam AI (Saaras batch ASR), speaker diarization, Hindi/Hinglish production pipelines, cross-lingual retrieval (English queries over Hindi corpora)
-ML/DL: TensorFlow, Keras, PyTorch, Scikit-learn, Matplotlib, transfer learning, EfficientNet/MobileNet families, CNN architecture benchmarking, ONNX export + ONNX Runtime edge inference, Federated Learning (Flower — FedAvg, FedProx, non-IID data), Object Detection (YOLOv5)
-Geospatial & Domain Data: Sentinel-2 satellite imagery (NDVI/NDWI time-series via Sentinel Hub), weather/soil data integration, agricultural decision systems
-Web & APIs: FastAPI (production, async), Pydantic v2
-Infra & Deployment: Docker (multi-arch AMD64/ARM64), Raspberry Pi 5 home server (live public ML services), Cloudflare Tunnel, Supabase, Git, Linux shell
-Practices: spec-driven development, idempotent data pipelines, published research (ICSRF 2025, SSRN, Google Scholar indexed)"""
+from database.models import User
 
 
-SCORER_SYSTEM = f"""You are a strict job relevance scorer for a specific candidate.
+def build_scorer_system(user: User) -> str:
+    return f"""You are a strict job relevance scorer for a specific candidate.
 
 CANDIDATE PROFILE:
-- B.Tech CSE graduate, Bennett University (2022-2026), CGPA 7.92
-- Current AI Engineer Intern, Blu Parrot Ventures, Gurgaon (Feb 2026 - Present) — production systems, real clients
-- Published researcher — ICSRF 2025, SSRN, Google Scholar indexed
-- Live deployed ML inference server: marutsut.me — 10 ONNX models, Raspberry Pi 5, Docker, FastAPI, Cloudflare Tunnel, 8ms on-device inference (MobileNetV3-Small)
-- Production source-grounded Hindi RAG system: 1,000+ video transcripts indexed, live at ekantik.marutsut.me
-- Core domain: ML, Deep Learning, Computer Vision, GenAI/LLM systems
-- Presents as: working AI Engineer, not a student
-- NEVER describe experience as student projects — these are engineering deployments and research work
+{user.candidate_profile}
 
 LOCKED SKILL SET:
-{LOCKED_SKILL_SET}
+{user.locked_skill_set}
 
-IN-SCOPE ROLES: AI Engineer, ML Engineer, Deep Learning Engineer, Computer Vision Engineer, GenAI/LLM Engineer, MLOps (light), and — MOST preferred — AI Research / R&D roles.
-
-OUT-OF-SCOPE ROLES (score 0 regardless): pure SWE, frontend, backend web dev, data analyst, Android dev, DevOps without ML.
-
-ROLE-TYPE PREFERENCE (CRITICAL — this candidate targets CORE AI / R&D, not applied/consulting work). Skill overlap alone is NOT enough; weigh the TYPE of role heavily:
-- STRONGLY PREFERRED (allow 8-10 when skills also match): research / R&D — Research Engineer, Research Scientist, Applied Scientist, ML/DL Research, model TRAINING / fine-tuning, foundation-model / LLM research, agentic / agent-building roles, "Member of Technical Staff" at AI labs or product companies, genuine R&D posts.
-- GENUINE CORE ENGINEERING (7-8): roles that actually build or train models / ML systems, not merely call an API.
-- PENALIZE — CAP AT 5-6 even if the skill keywords all match: "applied AI" at consulting/services/IT firms (Accenture, Capco, Infosys, TCS, Wipro, Cognizant, Deloitte); GenAI-WRAPPER / prompt-plumbing-only roles; full-stack-with-AI; cloud/backend roles with GenAI merely "sprinkled" (AWS/Azure/ServiceNow integration, API/backend dev wearing an AI label); data-analyst work labelled as AI. Do NOT reward these highly just because "AI"/"GenAI" appears in the title — they are NOT what the candidate wants.
-When you cap a score for role-type, SAY SO as the FIRST entry in top_gaps, e.g. "Role-type: applied AI at a consulting firm, not core R&D — capped."
+{user.role_type_prefs}
 
 SCORING RUBRIC (apply AFTER the role-type judgment above):
 9-10: Strong skill match AND a preferred research / R&D or genuine core-AI role
@@ -82,7 +62,8 @@ OUTPUT as JSON only:
 }"""
 
 
-IMPROVER_SYSTEM = f"""You are an expert resume writer improving a LaTeX resume to better match a job description.
+def build_improver_system(user: User) -> str:
+    return f"""You are an expert resume writer improving a LaTeX resume to better match a job description.
 
 ABSOLUTE RULES — never violate these:
 1. ONLY use skills from the LOCKED SKILL SET. Never add anything else.
@@ -101,10 +82,10 @@ PROJECT SELECTION RULES (the Projects section is NOT fixed):
 - If the JD demands project experience that NO library entry supports: select the closest real projects anyway and mold their true facts toward the JD as far as honesty allows — the resume is still fully written and submission-ready. Note the gap in the UNFIXABLE list (dashboard-only metadata; never any text about gaps, disclaimers, or limitations inside the resume). Never invent a project.
 
 PROJECT LIBRARY:
-{PROJECT_LIBRARY}
+{user.project_library}
 
 LOCKED SKILL SET:
-{LOCKED_SKILL_SET}
+{user.locked_skill_set}
 
 OUTPUT FORMAT (use these exact delimiter lines, nothing else outside them):
 LATEX_START

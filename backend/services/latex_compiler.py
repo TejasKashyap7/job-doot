@@ -31,12 +31,15 @@ def _tectonic_bin() -> str:
     return os.getenv("TECTONIC_BIN") or shutil.which("tectonic") or "tectonic"
 
 
-def compile_latex(latex_source: str, job_id: int, *, timeout: int = 120) -> Path:
-    """Returns absolute path to the compiled PDF. Raises LatexCompileError on failure."""
-    PDFS_DIR.mkdir(parents=True, exist_ok=True)
-    out_pdf = PDFS_DIR / f"{job_id}.pdf"
+def compile_latex(latex_source: str, identifier: int | str, *, timeout: int = 120) -> Path:
+    """Returns absolute path to the compiled PDF. Raises LatexCompileError on failure.
 
-    with tempfile.TemporaryDirectory(prefix=f"job{job_id}-") as tmp:
+    `identifier` names the output file — multi-user passes "{job_id}_{user_id}"
+    since the same job can now have one resume per user."""
+    PDFS_DIR.mkdir(parents=True, exist_ok=True)
+    out_pdf = PDFS_DIR / f"{identifier}.pdf"
+
+    with tempfile.TemporaryDirectory(prefix=f"job{identifier}-") as tmp:
         tmp_path = Path(tmp)
         tex_file = tmp_path / "resume.tex"
         tex_file.write_text(latex_source, encoding="utf-8")
@@ -48,7 +51,7 @@ def compile_latex(latex_source: str, job_id: int, *, timeout: int = 120) -> Path
             "--chatter", "minimal",
             str(tex_file),
         ]
-        log.info("Compiling job %d → %s", job_id, out_pdf)
+        log.info("Compiling %s → %s", identifier, out_pdf)
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         except FileNotFoundError:
@@ -63,7 +66,7 @@ def compile_latex(latex_source: str, job_id: int, *, timeout: int = 120) -> Path
             log_file = tmp_path / "resume.log"
             log_text = log_file.read_text(errors="replace") if log_file.exists() else ""
             stderr_excerpt = (proc.stderr or "")[-2000:]
-            log.error("Tectonic failed for job %d: stderr=%s", job_id, stderr_excerpt[:500])
+            log.error("Tectonic failed for %s: stderr=%s", identifier, stderr_excerpt[:500])
             raise LatexCompileError(
                 f"tectonic exit={proc.returncode}",
                 log_excerpt=(stderr_excerpt + "\n--- resume.log ---\n" + log_text[-3000:]),

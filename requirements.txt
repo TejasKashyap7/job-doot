@@ -15,6 +15,8 @@ uvicorn[standard]==0.32.1
 python-multipart==0.0.18      # form parsing for login POST
 itsdangerous==2.2.0           # signed session cookies
 jinja2==3.1.4                 # dashboard templates
+bcrypt==4.2.1                 # per-user password hashing (multi-user)
+pyyaml==6.0.2                 # parses the signup profile-export block (multi-user)
 
 # ---- Database ----
 sqlalchemy==2.0.36

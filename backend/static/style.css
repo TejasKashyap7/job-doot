@@ -118,6 +118,99 @@ a:hover { color: var(--accent-hover); text-decoration: none; }
   border-radius: var(--radius-sm);
 }
 
+/* Signup — wider variant of .login-wrap, adds label/textarea/file styling */
+.signup-wrap {
+  max-width: 640px;
+  margin: 6vh auto;
+  padding: 36px 32px 32px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(8px);
+}
+.signup-wrap h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+  letter-spacing: -0.3px;
+  background: linear-gradient(120deg, #fff, #b4a4ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.signup-wrap p.sub { margin: 0 0 20px; color: var(--text-faint); font-size: 13px; }
+.signup-wrap label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin: 16px 0 6px;
+}
+.signup-wrap label .hint { font-weight: 400; color: var(--text-faint); }
+.signup-wrap input[type="text"],
+.signup-wrap input[type="password"],
+.signup-wrap textarea {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.signup-wrap textarea { font-family: ui-monospace, monospace; font-size: 12.5px; resize: vertical; }
+.signup-wrap input:focus, .signup-wrap textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.signup-wrap input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  background: var(--bg-elev);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.signup-wrap button {
+  width: 100%;
+  margin-top: 22px;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent), #5a3df0);
+  color: #fff;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.signup-wrap button:hover { filter: brightness(1.1); box-shadow: 0 6px 20px rgba(124,92,255,0.4); }
+
+.whoami {
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+/* Admin */
+.admin-wrap { max-width: 1000px; margin: 0 auto; padding: 24px 28px; }
+.admin-wrap h2 { font-size: 16px; margin: 28px 0 12px; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-table th, .admin-table td {
+  text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border);
+}
+.admin-table th { color: var(--text-faint); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.admin-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+}
+.admin-badge--admin { background: var(--accent-soft); color: var(--accent-hover); }
+.admin-badge--user { background: var(--bg-hover); color: var(--text-dim); }
+.invite-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.invite-link { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-dim); word-break: break-all; }
+
 /* ============================================================
    Topbar
    ============================================================ */

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Admin — Job Hunter{% endblock %}
+{% block body %}
+<header class="topbar">
+  <h1>Job Hunter</h1>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/jobs">Active</a>
+    <a href="/archive">Archive</a>
+    <a href="/filtered">Filtered</a>
+    <a href="/insights">Insights</a>
+    <a href="/admin" class="active">Admin</a>
+    <span class="whoami">{{ current_user.username }}</span>
+    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
+  </nav>
+</header>
+
+<div class="admin-wrap">
+  <h2>Users</h2>
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Username</th><th>Role</th><th>Signed up</th><th>Telegram</th>
+        <th>Groq keys</th><th>Scored / Tailored / Applied</th><th>Last activity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td><span class="admin-badge {{ 'admin-badge--admin' if u.is_admin else 'admin-badge--user' }}">{{ 'admin' if u.is_admin else 'user' }}</span></td>
+        <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
+        <td>{{ 'on' if u.telegram_enabled else 'off' }}</td>
+        <td>{{ u.groq_keys_active }}/{{ u.groq_key_count }} active</td>
+        <td>
+          {{ u.state_counts.get('scored', 0) }} /
+          {{ u.state_counts.get('ready', 0) + u.state_counts.get('review_needed', 0) }} /
+          {{ u.state_counts.get('applied', 0) }}
+        </td>
+        <td>{{ u.last_activity.strftime('%Y-%m-%d %H:%M') if u.last_activity else 'never' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint" style="color:var(--text-faint); font-size:12px; margin-top:8px;">
+    Operational status only — no user's Groq keys, Telegram token, or password are ever shown here.
+  </p>
+
+  <h2>Invite links</h2>
+  <form method="post" action="/admin/invite" class="invite-row">
+    <input type="text" name="label" placeholder="label (e.g. vasu)" style="flex:1; padding:8px 10px; background:var(--bg-elev); border:1px solid var(--border-strong); border-radius:var(--radius-sm); color:var(--text);">
+    <button type="submit" style="padding:8px 16px; background:var(--accent); color:#fff; border:0; border-radius:var(--radius-sm); cursor:pointer;">Generate</button>
+  </form>
+  <table class="admin-table">
+    <thead><tr><th>Label</th><th>Link</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>
+      {% for inv in invites %}
+      <tr>
+        <td>{{ inv.label or '—' }}</td>
+        <td class="invite-link">/signup?token={{ inv.token }}</td>
+        <td>{{ 'used by user #' ~ inv.used_by_user_id if inv.used_at else 'unused' }}</td>
+        <td>{{ inv.created_at.strftime('%Y-%m-%d') if inv.created_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

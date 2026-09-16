@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Sign up — Job Hunter{% endblock %}
+{% block body %}
+<div class="signup-wrap">
+  <h1>Job Hunter</h1>
+  <p class="sub">Create your account. Have your profile export and resume ready before you start —
+    see the intake prompt your friend sent you.</p>
+
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+
+  <form method="post" action="/signup" enctype="multipart/form-data">
+    <input type="hidden" name="token" value="{{ token }}">
+
+    <label>Username <span class="hint">no spaces</span></label>
+    <input type="text" name="username" required autocapitalize="off" autocomplete="off">
+
+    <label>Password <span class="hint">at least 8 characters — do not reuse this in your profile export</span></label>
+    <input type="password" name="password" required minlength="8">
+
+    <label>Confirm password</label>
+    <input type="password" name="password_confirm" required minlength="8">
+
+    <label>Profile export <span class="hint">paste the whole PROFILE_EXPORT_START...PROFILE_EXPORT_END block</span></label>
+    <textarea name="profile_export" rows="14" required
+      placeholder="PROFILE_EXPORT_START&#10;username: ...&#10;candidate_profile: |&#10;  ...&#10;PROFILE_EXPORT_END"></textarea>
+
+    <label>Master resume <span class="hint">your .tex file</span></label>
+    <input type="file" name="resume_tex" accept=".tex" required>
+
+    <button type="submit">Create account</button>
+  </form>
+</div>
+{% endblock %}

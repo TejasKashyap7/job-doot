@@ -52,7 +52,6 @@ def ingest_rows(db: Session, rows: Iterable[dict]) -> dict:
             easy_apply=_coerce_bool(row.get("easy_apply", False)),
             apply_url=apply_url or None,
             raw_description=raw_description,
-            status="scraped",
             source_hash=h,
         ))
         inserted += 1

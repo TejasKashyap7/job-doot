@@ -29,7 +29,11 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 # (separate from the backend's) since this runs as its own process/container
 # sharing the same data/ volume. Kept 30 days.
 _LOG_DIR = Path("/app/data/logs")
-_LOG_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    _LOG_DIR = Path("data/logs")  # local dev fallback — /app only exists in the container
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
 _file_handler = logging.handlers.TimedRotatingFileHandler(
     _LOG_DIR / "gmail-watcher.log", when="midnight", backupCount=30, utc=True,
 )

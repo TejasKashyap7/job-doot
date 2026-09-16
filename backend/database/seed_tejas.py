@@ -1,14 +1,30 @@
-"""PROJECT_LIBRARY — the single runtime source of truth about Tejas's projects.
-
-Distilled from the verified dossiers in .claude/research/dossiers/ (code-level
-evidence). The improver agent SELECTS projects from this library per JD and writes
-bullets grounded ONLY in these facts. Every entry carries a DO-NOT-CLAIM list from
-the dossier honesty flags — those are hard bans.
-
-Maintenance rule: when Tejas finishes a new project (or a fact changes), add/update
-the entry here in the same change that updates the dossier vault. Keep entries
-compact — this text is injected into every improver call.
+"""One-time seed data for backfilling Tejas as the first `users` row during the
+multi-user migration (see db.py::_migrate_to_multi_user). This is a snapshot of
+what used to be hardcoded in agents/prompts.py and agents/project_library.py —
+after migration, those modules read from the DB per-user instead of these
+constants. Not imported anywhere except the migration itself.
 """
+
+CANDIDATE_PROFILE = """\
+- B.Tech CSE graduate, Bennett University (2022-2026), CGPA 7.92
+- Current AI Engineer Intern, Blu Parrot Ventures, Gurgaon (Feb 2026 - Present) — production systems, real clients
+- Published researcher — ICSRF 2025, SSRN, Google Scholar indexed
+- Live deployed ML inference server: marutsut.me — 10 ONNX models, Raspberry Pi 5, Docker, FastAPI, Cloudflare Tunnel, 8ms on-device inference (MobileNetV3-Small)
+- Production source-grounded Hindi RAG system: 1,000+ video transcripts indexed, live at ekantik.marutsut.me
+- Core domain: ML, Deep Learning, Computer Vision, GenAI/LLM systems
+- Presents as: working AI Engineer, not a student
+- NEVER describe experience as student projects — these are engineering deployments and research work"""
+
+LOCKED_SKILL_SET = """\
+Languages: Python (primary), C++, AppScript
+LLM & GenAI: Groq (Llama-family models), Google Gemini, LangChain, LangGraph, MCP (Model Context Protocol — built a custom MCP server), multi-agent systems (critic/improver loops), RAG systems, Source-Grounded QA, Hallucination Mitigation (verbatim-evidence checking, constrained generation), prompt engineering
+Vector DBs & Embeddings: ChromaDB, Pinecone, FAISS, sentence-transformers (LaBSE cross-lingual, MiniLM), Google Gemini embeddings
+Indic & Speech AI: Sarvam AI (Saaras batch ASR), speaker diarization, Hindi/Hinglish production pipelines, cross-lingual retrieval (English queries over Hindi corpora)
+ML/DL: TensorFlow, Keras, PyTorch, Scikit-learn, Matplotlib, transfer learning, EfficientNet/MobileNet families, CNN architecture benchmarking, ONNX export + ONNX Runtime edge inference, Federated Learning (Flower — FedAvg, FedProx, non-IID data), Object Detection (YOLOv5)
+Geospatial & Domain Data: Sentinel-2 satellite imagery (NDVI/NDWI time-series via Sentinel Hub), weather/soil data integration, agricultural decision systems
+Web & APIs: FastAPI (production, async), Pydantic v2
+Infra & Deployment: Docker (multi-arch AMD64/ARM64), Raspberry Pi 5 home server (live public ML services), Cloudflare Tunnel, Supabase, Git, Linux shell
+Practices: spec-driven development, idempotent data pipelines, published research (ICSRF 2025, SSRN, Google Scholar indexed)"""
 
 PROJECT_LIBRARY = """\
 === PROJECT: Smart Agriculture — Plant Disease Detection (LIVE: https://pifive.marutsut.me/docs) ===
@@ -68,3 +84,17 @@ Verified facts:
 - Pipeline: scrape -> LLM relevance scoring (0–10 rubric) -> tailor -> compile PDF per job; Gmail watcher classifies recruiter email (REAL_RESPONSE/SPAM_TRAP/AUTO_REJECTION/NEUTRAL) -> Telegram alerts.
 - Spec-driven build: weighted milestone roadmap, numbered flaw tracker, dossier research vault.
 DO NOT CLAIM: production throughput numbers (not yet deployed to the Pi); "fully autonomous applications" (human applies; Phase-2 Easy Apply not built)."""
+
+ROLE_TYPE_PREFS = """\
+IN-SCOPE ROLES: AI Engineer, ML Engineer, Deep Learning Engineer, Computer Vision Engineer, GenAI/LLM Engineer, MLOps (light), and — MOST preferred — AI Research / R&D roles.
+
+OUT-OF-SCOPE ROLES (score 0 regardless): pure SWE, frontend, backend web dev, data analyst, Android dev, DevOps without ML.
+
+ROLE-TYPE PREFERENCE (CRITICAL — this candidate targets CORE AI / R&D, not applied/consulting work). Skill overlap alone is NOT enough — weigh the TYPE of role heavily:
+- STRONGLY PREFERRED (allow 8-10 when skills also match): research / R&D — Research Engineer, Research Scientist, Applied Scientist, ML/DL Research, model TRAINING / fine-tuning, foundation-model / LLM research, agentic / agent-building roles, "Member of Technical Staff" at AI labs or product companies, genuine R&D posts.
+- GENUINE CORE ENGINEERING (7-8): roles that actually build or train models / ML systems, not merely call an API.
+- PENALIZE — CAP AT 5-6 even if the skill keywords all match: "applied AI" at consulting/services/IT firms (Accenture, Capco, Infosys, TCS, Wipro, Cognizant, Deloitte); GenAI-WRAPPER / prompt-plumbing-only roles; full-stack-with-AI; cloud/backend roles with GenAI merely "sprinkled" (AWS/Azure/ServiceNow integration, API/backend dev wearing an AI label); data-analyst work labelled as AI. Do NOT reward these highly just because "AI"/"GenAI" appears in the title — they are NOT what the candidate wants.
+When you cap a score for role-type, SAY SO as the FIRST entry in top_gaps, e.g. "Role-type: applied AI at a consulting firm, not core R&D — capped."""
+
+LOCATION_PREFS = "India — remote, Gurgaon, Delhi, Noida, Bangalore. Relocation: open for the right role."
+SALARY_PREF = "not disclosed"

@@ -2,27 +2,31 @@ import calendar as calendar_module
 import logging
 import logging.handlers
 import os
+import secrets
 from collections import Counter, OrderedDict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, Form, HTTPException, Request, status
+from fastapi import FastAPI, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from zoneinfo import ZoneInfo
 
 from database.db import init_db, get_db, SessionLocal
-from database.models import Job, Resume
+from database.models import GroqKey, InviteToken, Job, JobUserState, Resume, User
 from services.ingest import ingest_rows, load_csv
-from services.auth import COOKIE_NAME, check_password, make_cookie_value, require_login
+from services.auth import (
+    COOKIE_NAME, hash_password, make_cookie_value, require_admin, require_login, verify_password,
+)
+from services.profile_import import parse_profile_export, ProfileImportError
 import services.alerts as alerts_svc
 from services.scraper import save_li_at, has_li_at
 from services.watcher_health import watcher_status
-from agents.scorer import score_pending, score_job
+from agents.scorer import score_job_for_user, score_pending
 from agents.tailor_loop import tailor_pending, tailor_for_job
 from agents.quality_check import confidence_label
 from scheduler import start_scheduler, CSV_PATH
@@ -30,8 +34,14 @@ from scheduler import start_scheduler, CSV_PATH
 # Persistent, rotating logs — survive container rebuilds/restarts (unlike `docker
 # logs`, which resets every time the container is recreated). Kept 30 days, one
 # file per day, written to the bind-mounted data/ dir so they're SSH-readable.
+# /app only exists in the container; local Mac dev (see CLAUDE.md's local-dev
+# prelude) falls back to ./data/logs relative to the backend/ cwd.
 _LOG_DIR = Path("/app/data/logs")
-_LOG_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    _LOG_DIR = Path("data/logs")
+    _LOG_DIR.mkdir(parents=True, exist_ok=True)
 _file_handler = logging.handlers.TimedRotatingFileHandler(
     _LOG_DIR / "backend.log", when="midnight", backupCount=30, utc=True,
 )
@@ -57,15 +67,15 @@ async def lifespan(_: FastAPI):
     init_db()
     db = SessionLocal()
     try:
-        stuck = db.query(Job).filter(Job.status == "tailoring").update({"status": "scored"})
+        stuck = (
+            db.query(JobUserState).filter(JobUserState.status == "tailoring")
+            .update({"status": "scored"})
+        )
         db.commit()
         if stuck:
-            log.warning("Reset %d job(s) stuck at 'tailoring' from previous crashed run", stuck)
+            log.warning("Reset %d job/user state(s) stuck at 'tailoring' from a previous crashed run", stuck)
     finally:
         db.close()
-    master_paths = [Path("master_resume.tex"), Path("/app/master_resume.tex")]
-    if not any(p.exists() for p in master_paths):
-        log.warning("CRITICAL: master_resume.tex not found — tailor loop will fail on next run")
     scheduler = start_scheduler()
     yield
     if scheduler:
@@ -94,39 +104,55 @@ def webhook_jobs(request: Request, payload: dict, db: Session = Depends(get_db))
     return ingest_rows(db, rows)
 
 
-@app.post("/admin/trigger-scrape", dependencies=[Depends(require_login)])
-def trigger_scrape(db: Session = Depends(get_db)):
+# ---------------- Admin operational triggers ----------------
+# Shared/global actions (scraping, cross-user scoring/tailoring passes) — gated to
+# admins, not wired into the regular dashboard UI. See .claude/specs/multi-user.
+
+@app.post("/admin/trigger-scrape")
+def trigger_scrape(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
     return load_csv(db, CSV_PATH)
 
 
-@app.post("/admin/score-pending", dependencies=[Depends(require_login)])
-def admin_score_pending(limit: int | None = None, db: Session = Depends(get_db)):
+@app.post("/admin/score-pending")
+def admin_score_pending(limit: int | None = None, current_user: User = Depends(require_admin),
+                         db: Session = Depends(get_db)):
     return score_pending(db, limit=limit)
 
 
-@app.post("/admin/score-one/{job_id}", dependencies=[Depends(require_login)])
-def admin_score_one(job_id: int, db: Session = Depends(get_db)):
+@app.post("/admin/score-one/{job_id}")
+def admin_score_one(job_id: int, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(404, "job not found")
-    return score_job(db, job)
+    results = {}
+    for u in db.query(User).all():
+        results[u.username] = score_job_for_user(db, job, u)
+    return results
 
 
-@app.post("/admin/tailor-pending", dependencies=[Depends(require_login)])
-def admin_tailor_pending(limit: int | None = None, db: Session = Depends(get_db)):
+@app.post("/admin/tailor-pending")
+def admin_tailor_pending(limit: int | None = None, current_user: User = Depends(require_admin),
+                          db: Session = Depends(get_db)):
     return tailor_pending(db, limit=limit)
 
 
-@app.post("/admin/tailor/{job_id}", dependencies=[Depends(require_login)])
-def admin_tailor_one(job_id: int, db: Session = Depends(get_db)):
+@app.post("/admin/tailor/{job_id}")
+def admin_tailor_one(job_id: int, user_id: int, current_user: User = Depends(require_admin),
+                      db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
-    if not job:
-        raise HTTPException(404, "job not found")
+    target_user = db.get(User, user_id)
+    if not job or not target_user:
+        raise HTTPException(404, "job or user not found")
     if not job.raw_description:
         raise HTTPException(400, "job has no description")
-    resume = tailor_for_job(db, job)
+    resume = tailor_for_job(db, job, target_user)
+    state = (
+        db.query(JobUserState)
+        .filter(JobUserState.job_id == job.id, JobUserState.user_id == target_user.id).first()
+    )
     return {
-        "job_id": job.id, "status": job.status, "iterations": resume.iteration_count,
+        "job_id": job.id, "user": target_user.username, "status": state.status if state else None,
+        "iterations": resume.iteration_count,
         "verdict": resume.critic_verdict, "pdf_path": resume.pdf_path,
         "unfixable": resume.unfixable_items,
         "similarity_to_master": resume.similarity_to_master,
@@ -136,10 +162,13 @@ def admin_tailor_one(job_id: int, db: Session = Depends(get_db)):
     }
 
 
-@app.get("/admin/pdf/{job_id}", dependencies=[Depends(require_login)])
-def admin_pdf(job_id: int, db: Session = Depends(get_db)):
+@app.get("/admin/pdf/{job_id}")
+def user_pdf(job_id: int, current_user: User = Depends(require_login), db: Session = Depends(get_db)):
+    """Any logged-in user can fetch THEIR OWN latest resume for a job — scoped by
+    user_id so one user can never pull another's tailored PDF by guessing job ids."""
     resume = (
-        db.query(Resume).filter(Resume.job_id == job_id)
+        db.query(Resume)
+        .filter(Resume.job_id == job_id, Resume.user_id == current_user.id)
         .order_by(Resume.created_at.desc()).first()
     )
     if not resume or not resume.pdf_path:
@@ -148,40 +177,39 @@ def admin_pdf(job_id: int, db: Session = Depends(get_db)):
                         filename=f"resume_{job_id}.pdf")
 
 
-@app.get("/admin/jobs", dependencies=[Depends(require_login)])
-def list_jobs(db: Session = Depends(get_db), limit: int = 50):
+@app.get("/admin/jobs")
+def list_jobs(current_user: User = Depends(require_admin), db: Session = Depends(get_db), limit: int = 50):
     rows = db.query(Job).order_by(Job.date_scraped.desc()).limit(limit).all()
     return [
         {"id": j.id, "title": j.title, "company": j.company, "location": j.location,
-         "salary": j.salary, "easy_apply": j.easy_apply, "score": j.score,
-         "status": j.status,
+         "salary": j.salary, "easy_apply": j.easy_apply,
          "date_scraped": j.date_scraped.isoformat() if j.date_scraped else None}
         for j in rows
     ]
 
 
-# ---------------- LinkedIn cookie ----------------
+# ---------------- LinkedIn cookie (shared scrape infra — admin only) ----------------
 
-@app.get("/admin/linkedin-cookie", response_class=HTMLResponse,
-         dependencies=[Depends(require_login)])
-def linkedin_cookie_form(request: Request, saved: int = 0):
+@app.get("/admin/linkedin-cookie", response_class=HTMLResponse)
+def linkedin_cookie_form(request: Request, saved: int = 0, current_user: User = Depends(require_admin)):
     return templates.TemplateResponse("linkedin_cookie.html", {
         "request": request, "has_cookie": has_li_at(),
-        "saved": bool(saved), "error": None,
+        "saved": bool(saved), "error": None, "current_user": current_user,
     })
 
 
-@app.post("/admin/linkedin-cookie", dependencies=[Depends(require_login)])
-def linkedin_cookie_save(request: Request, li_at: str = Form(...)):
+@app.post("/admin/linkedin-cookie")
+def linkedin_cookie_save(request: Request, li_at: str = Form(...),
+                          current_user: User = Depends(require_admin)):
     value = (li_at or "").strip()
     if len(value) < 20:
         return templates.TemplateResponse("linkedin_cookie.html", {
             "request": request, "has_cookie": has_li_at(), "saved": False,
+            "current_user": current_user,
             "error": "That doesn't look like a valid li_at value — paste the full "
                      "string from the Cookie Value pane (it starts with AQED…).",
         }, status_code=400)
     save_li_at(value)
-    # Clear the paused banner now; if the value is bad, the drip loop re-flags it.
     alerts_svc.clear_alert("linkedin_cookie_expired")
     return RedirectResponse(url="/admin/linkedin-cookie?saved=1",
                             status_code=status.HTTP_303_SEE_OTHER)
@@ -195,15 +223,17 @@ def login_form(request: Request):
 
 
 @app.post("/login")
-def login_submit(request: Request, password: str = Form(...)):
-    if not check_password(password):
+def login_submit(request: Request, username: str = Form(...), password: str = Form(...),
+                  db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == username.strip()).first()
+    if not user or not verify_password(password, user.password_hash):
         return templates.TemplateResponse(
-            "login.html", {"request": request, "error": "Wrong password."},
+            "login.html", {"request": request, "error": "Wrong username or password."},
             status_code=401,
         )
     resp = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     resp.set_cookie(
-        COOKIE_NAME, make_cookie_value(),
+        COOKIE_NAME, make_cookie_value(user.id),
         httponly=True, samesite="lax", secure=False, path="/",
     )
     return resp
@@ -216,7 +246,133 @@ def logout():
     return resp
 
 
-# ---------------- Dashboard helpers ----------------
+# ---------------- Signup (invite-token only) ----------------
+
+@app.get("/signup", response_class=HTMLResponse)
+def signup_form(request: Request, token: str = "", db: Session = Depends(get_db)):
+    invite = db.query(InviteToken).filter(InviteToken.token == token).first() if token else None
+    if not invite or invite.used_at is not None:
+        # Don't reveal whether the route exists for an invalid/missing token.
+        raise HTTPException(404)
+    return templates.TemplateResponse("signup.html", {"request": request, "token": token, "error": None})
+
+
+@app.post("/signup")
+async def signup_submit(
+    request: Request,
+    token: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+    profile_export: str = Form(...),
+    resume_tex: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    invite = db.query(InviteToken).filter(InviteToken.token == token).first()
+    if not invite or invite.used_at is not None:
+        raise HTTPException(404)
+
+    def err(message: str):
+        return templates.TemplateResponse(
+            "signup.html", {"request": request, "token": token, "error": message},
+            status_code=400,
+        )
+
+    username = username.strip()
+    if not username or " " in username:
+        return err("Username must be non-empty with no spaces.")
+    if db.query(User.id).filter(User.username == username).first():
+        return err("That username is already taken.")
+    if len(password) < 8:
+        return err("Password must be at least 8 characters.")
+    if password != password_confirm:
+        return err("Passwords don't match.")
+
+    try:
+        parsed = parse_profile_export(profile_export)
+    except ProfileImportError as e:
+        return err(f"Profile export problem: {e}")
+
+    resume_bytes = await resume_tex.read()
+    try:
+        resume_text = resume_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return err("Resume file must be a plain-text .tex file (UTF-8).")
+    if not resume_text.strip():
+        return err("Resume file is empty.")
+
+    user = User(
+        username=username,
+        password_hash=hash_password(password),
+        is_admin=False,
+        telegram_enabled=parsed["telegram_enabled"],
+        telegram_bot_token=parsed["telegram_bot_token"],
+        telegram_chat_id=parsed["telegram_chat_id"],
+        candidate_profile=parsed["candidate_profile"],
+        locked_skill_set=parsed["locked_skill_set"],
+        project_library=parsed["project_library"],
+        role_type_prefs=parsed["role_type_prefs"],
+        location_prefs=parsed["location_prefs"],
+        salary_pref=parsed["salary_pref"],
+        master_resume_tex=resume_text,
+    )
+    db.add(user)
+    db.flush()  # need user.id before inserting groq keys
+    for i, key in enumerate(parsed["groq_keys"]):
+        db.add(GroqKey(user_id=user.id, key=key, label=f"key {i + 1}"))
+    invite.used_by_user_id = user.id
+    invite.used_at = datetime.utcnow()
+    db.commit()
+
+    resp = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    resp.set_cookie(
+        COOKIE_NAME, make_cookie_value(user.id),
+        httponly=True, samesite="lax", secure=False, path="/",
+    )
+    return resp
+
+
+# ---------------- Admin dashboard ----------------
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_view(request: Request, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    users = db.query(User).order_by(User.id).all()
+    rows = []
+    for u in users:
+        keys = db.query(GroqKey).filter(GroqKey.user_id == u.id).all()
+        state_counts = dict(
+            db.query(JobUserState.status, func.count(JobUserState.id))
+            .filter(JobUserState.user_id == u.id)
+            .group_by(JobUserState.status).all()
+        )
+        last_resume_row = (
+            db.query(Resume.created_at).filter(Resume.user_id == u.id)
+            .order_by(Resume.created_at.desc()).first()
+        )
+        rows.append({
+            "id": u.id, "username": u.username, "is_admin": u.is_admin,
+            "created_at": u.created_at, "telegram_enabled": u.telegram_enabled,
+            "groq_key_count": len(keys),
+            "groq_keys_active": sum(1 for k in keys if k.is_active),
+            "state_counts": state_counts,
+            "last_activity": last_resume_row[0] if last_resume_row else None,
+        })
+    invites = db.query(InviteToken).order_by(InviteToken.created_at.desc()).all()
+    return templates.TemplateResponse("admin.html", {
+        "request": request, "current_user": current_user, "users": rows, "invites": invites,
+    })
+
+
+@app.post("/admin/invite")
+def admin_create_invite(label: str = Form(""), current_user: User = Depends(require_admin),
+                         db: Session = Depends(get_db)):
+    token = secrets.token_urlsafe(24)
+    db.add(InviteToken(token=token, label=label.strip() or None, created_by_user_id=current_user.id))
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+
+
+# ---------------- Dashboard helpers (all scoped to current_user) ----------------
 
 ACTIVE_STATUSES = {"ready", "review_needed", "scored", "tailoring"}
 
@@ -231,22 +387,15 @@ def _score_class(score: float | None) -> str:
     return "grey"
 
 
-def _has_pdf(db: Session, job_id: int) -> bool:
-    resume = (
-        db.query(Resume.pdf_path).filter(Resume.job_id == job_id)
-        .order_by(Resume.created_at.desc()).first()
-    )
-    return bool(resume and resume[0])
-
-
-def _attach_pdf_flag(db: Session, jobs: list[Job]) -> list[dict]:
-    """Convert ORM rows to dicts the template can use, adding has_pdf."""
-    if not jobs:
+def _attach_pdf_flag(db: Session, pairs: list[tuple[JobUserState, Job]], user_id: int) -> list[dict]:
+    """Convert (JobUserState, Job) pairs to dicts the templates use, adding has_pdf.
+    Resume lookup is scoped to user_id — Resume now has one row per (job, user)."""
+    if not pairs:
         return []
-    job_ids = [j.id for j in jobs]
+    job_ids = [job.id for _, job in pairs]
     latest_ids = (
         db.query(Resume.job_id, func.max(Resume.id).label("max_id"))
-        .filter(Resume.job_id.in_(job_ids))
+        .filter(Resume.job_id.in_(job_ids), Resume.user_id == user_id)
         .group_by(Resume.job_id)
         .subquery()
     )
@@ -258,26 +407,24 @@ def _attach_pdf_flag(db: Session, jobs: list[Job]) -> list[dict]:
         .all()
     }
     out = []
-    for j in jobs:
-        has_pdf, sim, cov = latest_resumes.get(j.id, (False, None, None))
+    for state, job in pairs:
+        has_pdf, sim, cov = latest_resumes.get(job.id, (False, None, None))
         out.append({
-            "id": j.id, "title": j.title, "company": j.company,
-            "location": j.location, "salary": j.salary, "remote_flag": j.remote_flag,
-            "score": j.score, "status": j.status, "apply_url": j.apply_url,
-            "date_scraped": j.date_scraped, "date_applied": j.date_applied,
+            "id": job.id, "title": job.title, "company": job.company,
+            "location": job.location, "salary": job.salary, "remote_flag": job.remote_flag,
+            "score": state.score, "status": state.status, "apply_url": job.apply_url,
+            "date_scraped": job.date_scraped, "date_applied": state.date_applied,
             "has_pdf": has_pdf,
-            # Flaw 2 tailoring tag: ok / review / unchanged / None (no resume yet)
             "confidence": confidence_label(sim, cov) if has_pdf else None,
-            # Score transparency — shown in the per-row "why?" dropdown
-            "top_matches": j.top_matches or [],
-            "top_gaps": j.top_gaps or [],
+            "top_matches": state.top_matches or [],
+            "top_gaps": state.top_gaps or [],
         })
     return out
 
 
 def _sources_status() -> list[dict]:
-    """Per-source cookie health for the dashboard 'Sources' strip. Generalises to
-    future sources — each gets a row with its own status light + cookie page."""
+    """Per-source cookie health for the dashboard 'Sources' strip — shared scrape
+    infra, same for every user."""
     alerts = alerts_svc.get_alerts()
     if not has_li_at():
         state, label = "missing", "No cookie"
@@ -295,15 +442,17 @@ def _sources_status() -> list[dict]:
     ]
 
 
-def _needs_review_count(db: Session) -> int:
-    """Active jobs whose latest resume tripped a Flaw 2 tailoring flag."""
-    active_ids = [row[0] for row in
-                  db.query(Job.id).filter(Job.status.in_(ACTIVE_STATUSES)).all()]
+def _needs_review_count(db: Session, user_id: int) -> int:
+    active_ids = [
+        row[0] for row in
+        db.query(JobUserState.job_id)
+        .filter(JobUserState.user_id == user_id, JobUserState.status.in_(ACTIVE_STATUSES)).all()
+    ]
     if not active_ids:
         return 0
     latest_ids = (
         db.query(Resume.job_id, func.max(Resume.id).label("max_id"))
-        .filter(Resume.job_id.in_(active_ids))
+        .filter(Resume.job_id.in_(active_ids), Resume.user_id == user_id)
         .group_by(Resume.job_id).subquery()
     )
     rows = (
@@ -314,22 +463,26 @@ def _needs_review_count(db: Session) -> int:
                if confidence_label(sim, cov) in ("unchanged", "review"))
 
 
-def _counts(db: Session) -> dict:
-    active = db.query(Job).filter(Job.status.in_(ACTIVE_STATUSES)).count()
-    archive = db.query(Job).filter(Job.status == "applied").count()
-    filtered = db.query(Job).filter(Job.status == "filtered_out").count()
-    # Collected but not yet scored — visible so a Groq backlog never looks like "missing jobs".
-    pending = db.query(Job).filter(Job.status == "scraped").count()
+def _counts(db: Session, user_id: int) -> dict:
+    base = db.query(JobUserState).filter(JobUserState.user_id == user_id)
+    active = base.filter(JobUserState.status.in_(ACTIVE_STATUSES)).count()
+    archive = base.filter(JobUserState.status == "applied").count()
+    filtered = base.filter(JobUserState.status == "filtered_out").count()
+    # Collected but not yet scored for THIS user — visible so a scoring backlog
+    # never looks like "missing jobs".
+    scored_job_ids = db.query(JobUserState.job_id).filter(JobUserState.user_id == user_id)
+    pending = db.query(Job).filter(~Job.id.in_(scored_job_ids)).count()
     return {"active": active, "archive": archive, "filtered": filtered,
-            "pending": pending, "needs_review": _needs_review_count(db)}
+            "pending": pending, "needs_review": _needs_review_count(db, user_id)}
 
 
 # ---------------- Dashboard pages ----------------
 
-@app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_login)])
-def home(request: Request, db: Session = Depends(get_db),
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request, current_user: User = Depends(require_login), db: Session = Depends(get_db),
          year: int | None = None, month: int | None = None):
-    """Calendar home page — how many jobs were fetched each day, by month."""
+    """Calendar home page — how many jobs were fetched each day, by month. Scrape
+    activity is shared (same job pool for everyone); the counts strip is per-user."""
     now = datetime.utcnow()
     year = year or now.year
     month = month or now.month
@@ -354,8 +507,8 @@ def home(request: Request, db: Session = Depends(get_db),
     next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
 
     return templates.TemplateResponse("home.html", {
-        "request": request,
-        "counts": _counts(db),
+        "request": request, "current_user": current_user,
+        "counts": _counts(db, current_user.id),
         "year": year, "month": month,
         "month_name": month_start.strftime("%B %Y"),
         "weeks": weeks,
@@ -368,11 +521,14 @@ def home(request: Request, db: Session = Depends(get_db),
     })
 
 
-@app.get("/jobs", response_class=HTMLResponse, dependencies=[Depends(require_login)])
-def dashboard(request: Request, db: Session = Depends(get_db),
-              min_score: int = 0, status: str = "", q: str = "", review: int = 0,
-              date: str = ""):
-    query = db.query(Job).filter(Job.status.in_(ACTIVE_STATUSES))
+@app.get("/jobs", response_class=HTMLResponse)
+def dashboard(request: Request, current_user: User = Depends(require_login), db: Session = Depends(get_db),
+              min_score: int = 0, status: str = "", q: str = "", review: int = 0, date: str = ""):
+    query = (
+        db.query(JobUserState, Job)
+        .join(Job, JobUserState.job_id == Job.id)
+        .filter(JobUserState.user_id == current_user.id, JobUserState.status.in_(ACTIVE_STATUSES))
+    )
     if date:
         try:
             day_start = datetime.strptime(date, "%Y-%m-%d")
@@ -381,51 +537,53 @@ def dashboard(request: Request, db: Session = Depends(get_db),
         except ValueError:
             date = ""
     if min_score:
-        query = query.filter(Job.score >= min_score)
+        query = query.filter(JobUserState.score >= min_score)
     if status:
-        query = query.filter(Job.status == status)
+        query = query.filter(JobUserState.status == status)
     if q:
         like = f"%{q.strip()}%"
-        from sqlalchemy import or_
         query = query.filter(or_(
-            Job.title.ilike(like),
-            Job.company.ilike(like),
-            Job.location.ilike(like),
+            Job.title.ilike(like), Job.company.ilike(like), Job.location.ilike(like),
         ))
-    jobs = query.order_by(Job.date_scraped.desc(), Job.score.desc().nullslast()).all()
+    pairs = query.order_by(Job.date_scraped.desc(), JobUserState.score.desc().nullslast()).all()
 
-    rows = _attach_pdf_flag(db, jobs)
+    rows = _attach_pdf_flag(db, pairs, current_user.id)
 
     # Flaw 2 review queue: show only resumes flagged by the tailoring checks.
     if review:
         rows = [r for r in rows if r["confidence"] in ("unchanged", "review")]
 
-    # Group by date scraped (newest first, already ordered)
     grouped = OrderedDict()
     for r in rows:
         key = r["date_scraped"].strftime("%Y-%m-%d") if r["date_scraped"] else "unknown"
         grouped.setdefault(key, []).append(r)
 
     return templates.TemplateResponse("jobs.html", {
-        "request": request,
+        "request": request, "current_user": current_user,
         "grouped": grouped.items(),
-        "counts": _counts(db),
+        "counts": _counts(db, current_user.id),
         "sources": _sources_status(),
         "filters": {"min_score": min_score, "status": status, "q": q, "review": review, "date": date},
         "score_class": _score_class,
     })
 
 
-@app.get("/insights", response_class=HTMLResponse, dependencies=[Depends(require_login)])
-def insights_view(request: Request, db: Session = Depends(get_db), days: int = 180):
-    """Market-insights charts aggregated from data the scorer already collected.
-    No extra API calls — see .claude/specs/market-insights/approach.md."""
-    q = db.query(Job)
+@app.get("/insights", response_class=HTMLResponse)
+def insights_view(request: Request, current_user: User = Depends(require_login), db: Session = Depends(get_db),
+                   days: int = 180):
+    """Market-insights charts aggregated from THIS user's own scoring data — the
+    same job can score differently for different users, so this is per-user, not
+    global. See .claude/specs/market-insights/approach.md."""
+    q = (
+        db.query(JobUserState, Job)
+        .join(Job, JobUserState.job_id == Job.id)
+        .filter(JobUserState.user_id == current_user.id)
+    )
     if days > 0:
         since = datetime.utcnow() - timedelta(days=days)
         q = q.filter(Job.date_scraped >= since)
-    jobs = q.all()
-    total_jobs = len(jobs)
+    pairs = q.all()
+    total_jobs = len(pairs)
 
     # The scorer sometimes writes a role-fit reasoning sentence into top_gaps
     # (e.g. "Role-type: applied AI at a consulting firm, not core R&D — capped")
@@ -438,13 +596,13 @@ def insights_view(request: Request, db: Session = Depends(get_db), days: int = 1
     matches_counter: Counter = Counter()
     gaps_counter: Counter = Counter()
     all_skills_counter: Counter = Counter()
-    for j in jobs:
-        for s in (j.top_matches or []):
+    for state, j in pairs:
+        for s in (state.top_matches or []):
             s = (s or "").strip()
             if _is_skill(s):
                 matches_counter[s] += 1
                 all_skills_counter[s] += 1
-        for s in (j.top_gaps or []):
+        for s in (state.top_gaps or []):
             s = (s or "").strip()
             if _is_skill(s):
                 gaps_counter[s] += 1
@@ -456,10 +614,10 @@ def insights_view(request: Request, db: Session = Depends(get_db), days: int = 1
     # Skills-over-time: weekly buckets for the 5 most common skills overall.
     top5_names = [name for name, _ in all_skills_counter.most_common(5)]
     weekly: "OrderedDict[str, dict[str, int]]" = OrderedDict()
-    for j in sorted((j for j in jobs if j.date_scraped), key=lambda j: j.date_scraped):
+    for state, j in sorted((p for p in pairs if p[1].date_scraped), key=lambda p: p[1].date_scraped):
         week_key = j.date_scraped.strftime("%Y-W%W")
         bucket = weekly.setdefault(week_key, {name: 0 for name in top5_names})
-        for s in list(j.top_matches or []) + list(j.top_gaps or []):
+        for s in list(state.top_matches or []) + list(state.top_gaps or []):
             s = (s or "").strip()
             if s in bucket:
                 bucket[s] += 1
@@ -468,21 +626,20 @@ def insights_view(request: Request, db: Session = Depends(get_db), days: int = 1
 
     # domain_flag is meant to be one of a handful of short categories, but the
     # scorer occasionally writes a full sentence instead — bucket anything
-    # off-vocabulary as "other" so the chart stays readable (raw value is
-    # still on the Job row, this only affects this chart's grouping).
+    # off-vocabulary as "other" so the chart stays readable.
     CANONICAL_DOMAINS = {"in-scope", "out-of-scope", "borderline", "unclassified"}
     domain_counter: Counter = Counter()
-    for j in jobs:
-        flag = (j.domain_flag or "unclassified").strip()
+    for state, j in pairs:
+        flag = (state.domain_flag or "unclassified").strip()
         domain_counter[flag if flag in CANONICAL_DOMAINS else "other"] += 1
 
-    company_counter = Counter(j.company for j in jobs if j.company)
-    location_counter = Counter((j.location or "unspecified").strip() for j in jobs)
+    company_counter = Counter(j.company for _, j in pairs if j.company)
+    location_counter = Counter((j.location or "unspecified").strip() for _, j in pairs)
 
     score_buckets = [0] * 11
-    for j in jobs:
-        if j.score is not None:
-            score_buckets[max(0, min(10, round(j.score)))] += 1
+    for state, j in pairs:
+        if state.score is not None:
+            score_buckets[max(0, min(10, round(state.score)))] += 1
 
     domain_items = domain_counter.most_common()
     top_companies = company_counter.most_common(15)
@@ -490,8 +647,8 @@ def insights_view(request: Request, db: Session = Depends(get_db), days: int = 1
     chart_colors = ["#7c5cff", "#3ddc97", "#ffb86b", "#5db8ff", "#ff5d6c"]
 
     return templates.TemplateResponse("insights.html", {
-        "request": request,
-        "counts": _counts(db),
+        "request": request, "current_user": current_user,
+        "counts": _counts(db, current_user.id),
         "days": days,
         "total_jobs": total_jobs,
         "chart_data": {
@@ -516,69 +673,81 @@ def insights_view(request: Request, db: Session = Depends(get_db), days: int = 1
     })
 
 
-@app.get("/archive", response_class=HTMLResponse, dependencies=[Depends(require_login)])
-def archive_view(request: Request, db: Session = Depends(get_db)):
-    jobs = (
-        db.query(Job).filter(Job.status == "applied")
-        .order_by(Job.date_applied.desc().nullslast(), Job.id.desc()).all()
+@app.get("/archive", response_class=HTMLResponse)
+def archive_view(request: Request, current_user: User = Depends(require_login), db: Session = Depends(get_db)):
+    pairs = (
+        db.query(JobUserState, Job)
+        .join(Job, JobUserState.job_id == Job.id)
+        .filter(JobUserState.user_id == current_user.id, JobUserState.status == "applied")
+        .order_by(JobUserState.date_applied.desc().nullslast(), Job.id.desc()).all()
     )
-    rows = _attach_pdf_flag(db, jobs)
+    rows = _attach_pdf_flag(db, pairs, current_user.id)
     return templates.TemplateResponse("archive.html", {
-        "request": request,
+        "request": request, "current_user": current_user,
         "jobs": rows,
-        "counts": _counts(db),
+        "counts": _counts(db, current_user.id),
         "score_class": _score_class,
     })
 
 
-@app.get("/filtered", response_class=HTMLResponse, dependencies=[Depends(require_login)])
-def filtered_view(request: Request, db: Session = Depends(get_db)):
-    jobs = (
-        db.query(Job).filter(Job.status == "filtered_out")
+@app.get("/filtered", response_class=HTMLResponse)
+def filtered_view(request: Request, current_user: User = Depends(require_login), db: Session = Depends(get_db)):
+    pairs = (
+        db.query(JobUserState, Job)
+        .join(Job, JobUserState.job_id == Job.id)
+        .filter(JobUserState.user_id == current_user.id, JobUserState.status == "filtered_out")
         .order_by(Job.date_scraped.desc()).all()
     )
     rows = []
-    for j in jobs:
+    for state, j in pairs:
         rows.append({
             "id": j.id, "title": j.title, "company": j.company,
-            "location": j.location, "score": j.score, "apply_url": j.apply_url,
-            "date_scraped": j.date_scraped, "top_gaps": j.top_gaps or [],
+            "location": j.location, "score": state.score, "apply_url": j.apply_url,
+            "date_scraped": j.date_scraped, "top_gaps": state.top_gaps or [],
         })
     return templates.TemplateResponse("filtered.html", {
-        "request": request,
+        "request": request, "current_user": current_user,
         "jobs": rows,
-        "counts": _counts(db),
+        "counts": _counts(db, current_user.id),
         "score_class": _score_class,
     })
 
 
-# ---------------- Job actions ----------------
+# ---------------- Job actions (scoped to current_user's own JobUserState) ----------------
 
-@app.post("/jobs/{job_id}/applied", dependencies=[Depends(require_login)])
-def mark_applied(job_id: int, db: Session = Depends(get_db)):
-    job = db.get(Job, job_id)
-    if not job:
+@app.post("/jobs/{job_id}/applied")
+def mark_applied(job_id: int, current_user: User = Depends(require_login), db: Session = Depends(get_db)):
+    state = (
+        db.query(JobUserState)
+        .filter(JobUserState.job_id == job_id, JobUserState.user_id == current_user.id).first()
+    )
+    if not state:
         raise HTTPException(404)
-    job.status = "applied"
-    job.date_applied = datetime.utcnow()
+    state.status = "applied"
+    state.date_applied = datetime.utcnow()
     db.commit()
     return RedirectResponse(url="/jobs", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.post("/jobs/{job_id}/unapply", dependencies=[Depends(require_login)])
-def unapply(job_id: int, db: Session = Depends(get_db)):
-    job = db.get(Job, job_id)
-    if not job:
+@app.post("/jobs/{job_id}/unapply")
+def unapply(job_id: int, current_user: User = Depends(require_login), db: Session = Depends(get_db)):
+    state = (
+        db.query(JobUserState)
+        .filter(JobUserState.job_id == job_id, JobUserState.user_id == current_user.id).first()
+    )
+    if not state:
         raise HTTPException(404)
-    # Restore prior status. If we have a Resume with a PDF, "ready"; else "scored".
-    has_resume = db.query(Resume).filter(Resume.job_id == job.id).first() is not None
-    job.status = "ready" if has_resume else "scored"
-    job.date_applied = None
+    has_resume = (
+        db.query(Resume)
+        .filter(Resume.job_id == job_id, Resume.user_id == current_user.id).first() is not None
+    )
+    state.status = "ready" if has_resume else "scored"
+    state.date_applied = None
     db.commit()
     return RedirectResponse(url="/archive", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@app.post("/jobs/{job_id}/calendar", dependencies=[Depends(require_login)])
+@app.post("/jobs/{job_id}/calendar")
 def add_calendar_event(
     job_id: int,
     event_type: str = Form(...),
@@ -586,6 +755,11 @@ def add_calendar_event(
     event_time: str = Form(...),     # HH:MM
     notes: str | None = Form(None),
     next_url: str = Form(default="/archive"),
+    # Google Calendar uses ONE shared OAuth token (token.json) — same single-account
+    # limitation as the Gmail watcher (see .claude/specs/multi-user/approach.md,
+    # "explicitly out of scope"). Gating to admin only so a non-admin user can't
+    # accidentally create an event on the admin's real personal calendar.
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     from services.calendar_service import create_event  # lazy import (Google libs heavy)

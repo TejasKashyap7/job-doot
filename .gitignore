@@ -17,5 +17,7 @@ li_cookies.json
 *.cookies.json
 .DS_Store
 data/alerts.json
+data/logs/
+backend/data/
 *.session
 tools/*.session

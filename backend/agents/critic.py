@@ -16,15 +16,16 @@ class CriticResult(TypedDict):
     reason: str
 
 
-def review(latex_resume: str, job_title: str, company: str, jd: str) -> CriticResult:
-    user = (
+def review(latex_resume: str, job_title: str, company: str, jd: str,
+           api_keys: list[str] | None = None) -> CriticResult:
+    user_msg = (
         f"JOB TITLE: {job_title}\n"
         f"COMPANY: {company}\n\n"
         f"JOB DESCRIPTION:\n{jd}\n\n"
         f"--- RESUME (LaTeX source) ---\n{latex_resume}\n"
         f"--- END RESUME ---"
     )
-    raw = chat_json(CRITIC_SYSTEM, user, temperature=0.2, max_tokens=1500)
+    raw = chat_json(CRITIC_SYSTEM, user_msg, api_keys=api_keys, temperature=0.2, max_tokens=1500)
     # normalize
     shortcomings = raw.get("shortcomings") or []
     verdict = (raw.get("verdict") or "NEEDS WORK").upper().strip()
