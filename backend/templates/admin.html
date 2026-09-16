@@ -16,53 +16,181 @@
 </header>
 
 <div class="admin-wrap">
-  <h2>Users</h2>
-  <table class="admin-table">
-    <thead>
-      <tr>
-        <th>Username</th><th>Role</th><th>Signed up</th><th>Telegram</th>
-        <th>Groq keys</th><th>Scored / Tailored / Applied</th><th>Last activity</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for u in users %}
-      <tr>
-        <td>{{ u.username }}</td>
-        <td><span class="admin-badge {{ 'admin-badge--admin' if u.is_admin else 'admin-badge--user' }}">{{ 'admin' if u.is_admin else 'user' }}</span></td>
-        <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
-        <td>{{ 'on' if u.telegram_enabled else 'off' }}</td>
-        <td>{{ u.groq_keys_active }}/{{ u.groq_key_count }} active</td>
-        <td>
-          {{ u.state_counts.get('scored', 0) }} /
-          {{ u.state_counts.get('ready', 0) + u.state_counts.get('review_needed', 0) }} /
-          {{ u.state_counts.get('applied', 0) }}
-        </td>
-        <td>{{ u.last_activity.strftime('%Y-%m-%d %H:%M') if u.last_activity else 'never' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p class="hint" style="color:var(--text-faint); font-size:12px; margin-top:8px;">
-    Operational status only — no user's Groq keys, Telegram token, or password are ever shown here.
-  </p>
 
-  <h2>Invite links</h2>
-  <form method="post" action="/admin/invite" class="invite-row">
-    <input type="text" name="label" placeholder="label (e.g. vasu)" style="flex:1; padding:8px 10px; background:var(--bg-elev); border:1px solid var(--border-strong); border-radius:var(--radius-sm); color:var(--text);">
-    <button type="submit" style="padding:8px 16px; background:var(--accent); color:#fff; border:0; border-radius:var(--radius-sm); cursor:pointer;">Generate</button>
-  </form>
-  <table class="admin-table">
-    <thead><tr><th>Label</th><th>Link</th><th>Status</th><th>Created</th></tr></thead>
-    <tbody>
-      {% for inv in invites %}
-      <tr>
-        <td>{{ inv.label or '—' }}</td>
-        <td class="invite-link">/signup?token={{ inv.token }}</td>
-        <td>{{ 'used by user #' ~ inv.used_by_user_id if inv.used_at else 'unused' }}</td>
-        <td>{{ inv.created_at.strftime('%Y-%m-%d') if inv.created_at else '—' }}</td>
-      </tr>
+  {% if msg %}
+  <div class="admin-flash admin-flash--{{ level }}">{{ msg }}</div>
+  {% endif %}
+
+  {# ---------- Overview tiles ---------- #}
+  <div class="admin-tiles">
+    <div class="admin-tile">
+      <span class="admin-tile__label">Users</span>
+      <span class="admin-tile__value">{{ users|length }}</span>
+      <span class="admin-tile__sub">{{ admin_count }} admin</span>
+    </div>
+    <div class="admin-tile">
+      <span class="admin-tile__label">Shared job pool</span>
+      <span class="admin-tile__value">{{ total_jobs }}</span>
+      <span class="admin-tile__sub">scraped, all sources</span>
+    </div>
+    <div class="admin-tile {{ 'admin-tile--warn' if alerts else '' }}">
+      <span class="admin-tile__label">Active alerts</span>
+      <span class="admin-tile__value">{{ alerts|length }}</span>
+      <span class="admin-tile__sub">{{ 'needs attention' if alerts else 'all clear' }}</span>
+    </div>
+    <div class="admin-tile">
+      <span class="admin-tile__label">Pending invites</span>
+      <span class="admin-tile__value">{{ invites|selectattr('used_at', 'none')|list|length }}</span>
+      <span class="admin-tile__sub">{{ invites|rejectattr('used_at', 'none')|list|length }} used</span>
+    </div>
+  </div>
+
+  <div class="admin-grid">
+
+    {# ---------- Users ---------- #}
+    <section class="admin-card admin-card--wide">
+      <div class="admin-card__head">
+        <h2>Users</h2>
+        <span class="admin-card__hint">Operational status only — no one's Groq keys, Telegram token, or password are ever shown here.</span>
+      </div>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>User</th><th>Signed up</th><th>Telegram</th><th>Groq keys</th>
+            <th class="num">Scored</th><th class="num">Tailored</th><th class="num">Applied</th>
+            <th>Last activity</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>
+              <div class="admin-user">
+                <span class="admin-avatar">{{ u.username[0]|upper }}</span>
+                <div>
+                  <div class="admin-user__name">{{ u.username }}</div>
+                  <span class="admin-badge {{ 'admin-badge--admin' if u.is_admin else 'admin-badge--user' }}">{{ 'admin' if u.is_admin else 'user' }}</span>
+                </div>
+              </div>
+            </td>
+            <td>{{ u.created_at.strftime('%d %b %Y') if u.created_at else '—' }}</td>
+            <td><span class="dot {{ 'dot--on' if u.telegram_enabled else 'dot--off' }}"></span>{{ 'connected' if u.telegram_enabled else 'off' }}</td>
+            <td>{{ u.groq_keys_active }}<span class="muted">/{{ u.groq_key_count }} active</span></td>
+            <td class="num">{{ u.scored }}</td>
+            <td class="num">{{ u.tailored }}</td>
+            <td class="num">{{ u.applied }}</td>
+            <td>{{ u.last_activity.strftime('%d %b, %H:%M') if u.last_activity else '<span class="muted">never</span>'|safe }}</td>
+            <td class="actions">
+              {% if u.id != current_user.id %}
+              <form method="post" action="/admin/users/{{ u.id }}/delete"
+                    onsubmit="return confirm('Remove {{ u.username }}? This permanently deletes their account, scores, and every tailored resume. The shared job pool is untouched.');">
+                <button type="submit" class="btn btn--danger btn--sm">Remove</button>
+              </form>
+              {% else %}
+              <span class="muted">you</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    {# ---------- System alerts ---------- #}
+    <section class="admin-card">
+      <div class="admin-card__head"><h2>System alerts</h2></div>
+      {% if alerts %}
+        {% for key, a in alerts.items() %}
+        <div class="admin-alert admin-alert--{{ a.level }}">
+          <div class="admin-alert__body">
+            <strong>{{ a.message }}</strong>
+            {% if a.instructions %}<p>{{ a.instructions }}</p>{% endif %}
+            <span class="muted">since {{ a.since[:16].replace('T', ' ') if a.since else '?' }} · <code>{{ key }}</code></span>
+          </div>
+          <div class="admin-alert__actions">
+            {% if key == "linkedin_cookie_expired" %}<a class="btn btn--sm" href="/admin/linkedin-cookie">Fix cookie</a>{% endif %}
+            <form method="post" action="/admin/alerts/{{ key }}/clear"><button type="submit" class="btn btn--ghost btn--sm">Clear</button></form>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="admin-empty">No active alerts.</p>
+      {% endif %}
+
+      <div class="admin-card__head" style="margin-top:18px"><h2>Sources</h2></div>
+      {% for s in sources %}
+      <div class="admin-source">
+        <span class="dot dot--{{ 'on' if s.state == 'active' else 'off' }}"></span>
+        <span class="admin-source__name">{{ s.name }}</span>
+        <span class="muted">{{ s.label }}</span>
+        {% if s.cookie_url %}<a class="admin-source__link" href="{{ s.cookie_url }}">manage &rarr;</a>{% endif %}
+      </div>
       {% endfor %}
-    </tbody>
-  </table>
+    </section>
+
+    {# ---------- Quick actions ---------- #}
+    <section class="admin-card">
+      <div class="admin-card__head">
+        <h2>Quick actions</h2>
+        <span class="admin-card__hint">Run a pipeline stage now instead of waiting for the scheduler. These block until done.</span>
+      </div>
+      <div class="admin-actions">
+        <form method="post" action="/admin/run/scrape">
+          <button type="submit" class="btn">Trigger scrape</button>
+          <span class="muted">ingest the CSV drop</span>
+        </form>
+        <form method="post" action="/admin/run/score">
+          <button type="submit" class="btn">Score pending</button>
+          <span class="muted">every user, local Ollama</span>
+        </form>
+        <form method="post" action="/admin/run/tailor">
+          <button type="submit" class="btn">Tailor pending</button>
+          <span class="muted">every user, their own Groq keys</span>
+        </form>
+      </div>
+    </section>
+
+    {# ---------- Invite links ---------- #}
+    <section class="admin-card admin-card--wide">
+      <div class="admin-card__head">
+        <h2>Invite links</h2>
+        <span class="admin-card__hint">Signup is invite-only. Each link works once. Delete an unused link to revoke it.</span>
+      </div>
+      <form method="post" action="/admin/invite" class="invite-row">
+        <input type="text" name="label" placeholder="who is this for? (e.g. vasu)" autocomplete="off">
+        <button type="submit" class="btn">Generate link</button>
+      </form>
+      {% if invites %}
+      <table class="admin-table">
+        <thead><tr><th>For</th><th>Link</th><th>Status</th><th>Created</th><th></th></tr></thead>
+        <tbody>
+          {% for inv in invites %}
+          <tr class="{{ 'row--muted' if inv.used_at else '' }}">
+            <td>{{ inv.label or '—' }}</td>
+            <td class="invite-link">
+              {% if inv.used_at %}<span class="muted">…{{ inv.token[-8:] }}</span>
+              {% else %}<code>{{ request.url.scheme }}://{{ request.url.netloc }}/signup?token={{ inv.token }}</code>{% endif %}
+            </td>
+            <td>
+              {% if inv.used_at %}<span class="admin-badge admin-badge--used">used · user #{{ inv.used_by_user_id }}</span>
+              {% else %}<span class="admin-badge admin-badge--open">unused</span>{% endif %}
+            </td>
+            <td>{{ inv.created_at.strftime('%d %b %Y') if inv.created_at else '—' }}</td>
+            <td class="actions">
+              <form method="post" action="/admin/invite/{{ inv.id }}/delete"
+                    {% if not inv.used_at %}onsubmit="return confirm('Delete this invite link? Anyone holding it will no longer be able to sign up.');"{% endif %}>
+                <button type="submit" class="btn btn--ghost btn--sm">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="admin-empty">No invite links yet.</p>
+      {% endif %}
+    </section>
+
+  </div>
 </div>
 {% endblock %}

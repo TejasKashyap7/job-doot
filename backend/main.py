@@ -7,6 +7,7 @@ from collections import Counter, OrderedDict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -334,8 +335,16 @@ async def signup_submit(
 
 # ---------------- Admin dashboard ----------------
 
+def _admin_redirect(msg: str = "", level: str = "ok") -> RedirectResponse:
+    url = "/admin"
+    if msg:
+        url += f"?msg={quote(msg)}&level={level}"
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.get("/admin", response_class=HTMLResponse)
-def admin_view(request: Request, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+def admin_view(request: Request, current_user: User = Depends(require_admin), db: Session = Depends(get_db),
+               msg: str = "", level: str = "ok"):
     users = db.query(User).order_by(User.id).all()
     rows = []
     for u in users:
@@ -354,12 +363,19 @@ def admin_view(request: Request, current_user: User = Depends(require_admin), db
             "created_at": u.created_at, "telegram_enabled": u.telegram_enabled,
             "groq_key_count": len(keys),
             "groq_keys_active": sum(1 for k in keys if k.is_active),
-            "state_counts": state_counts,
+            "scored": sum(v for k, v in state_counts.items() if k not in ("filtered_out", "rejected")),
+            "tailored": state_counts.get("ready", 0) + state_counts.get("review_needed", 0),
+            "applied": state_counts.get("applied", 0),
             "last_activity": last_resume_row[0] if last_resume_row else None,
         })
     invites = db.query(InviteToken).order_by(InviteToken.created_at.desc()).all()
+    alerts = alerts_svc.get_alerts()
+    total_jobs = db.query(Job).count()
     return templates.TemplateResponse("admin.html", {
         "request": request, "current_user": current_user, "users": rows, "invites": invites,
+        "alerts": alerts, "sources": _sources_status(), "total_jobs": total_jobs,
+        "admin_count": sum(1 for u in users if u.is_admin),
+        "msg": msg, "level": level if level in ("ok", "warn", "err") else "ok",
     })
 
 
@@ -369,7 +385,65 @@ def admin_create_invite(label: str = Form(""), current_user: User = Depends(requ
     token = secrets.token_urlsafe(24)
     db.add(InviteToken(token=token, label=label.strip() or None, created_by_user_id=current_user.id))
     db.commit()
-    return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return _admin_redirect(f"Invite link created for {label.strip() or 'unlabelled'}.")
+
+
+@app.post("/admin/invite/{invite_id}/delete")
+def admin_delete_invite(invite_id: int, current_user: User = Depends(require_admin),
+                         db: Session = Depends(get_db)):
+    invite = db.get(InviteToken, invite_id)
+    if invite:
+        db.delete(invite)
+        db.commit()
+    return _admin_redirect("Invite link deleted.")
+
+
+@app.post("/admin/users/{user_id}/delete")
+def admin_delete_user(user_id: int, current_user: User = Depends(require_admin),
+                       db: Session = Depends(get_db)):
+    if user_id == current_user.id:
+        return _admin_redirect("You can't remove your own account.", "err")
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(404)
+    # Cascades to their groq_keys, job_user_state rows, and resumes (ORM cascade).
+    # Shared Job rows are untouched — they belong to everyone.
+    db.delete(target)
+    db.commit()
+    return _admin_redirect(f"Removed user {target.username} and all their data.", "warn")
+
+
+@app.post("/admin/alerts/{key}/clear")
+def admin_clear_alert(key: str, current_user: User = Depends(require_admin)):
+    alerts_svc.clear_alert(key)
+    return _admin_redirect(f"Cleared alert: {key}.")
+
+
+# Quick actions — same operations as the JSON API routes above, but redirect back
+# to /admin with a one-line result so they can be driven from the dashboard buttons.
+
+@app.post("/admin/run/scrape")
+def admin_run_scrape(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    r = load_csv(db, CSV_PATH)
+    return _admin_redirect(f"Scrape done: {r.get('inserted', 0)} new, {r.get('skipped', 0)} skipped.")
+
+
+@app.post("/admin/run/score")
+def admin_run_score(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    r = score_pending(db)
+    level = "warn" if r.get("errors") else "ok"
+    return _admin_redirect(
+        f"Scoring done: {r.get('scored', 0)} scored, {r.get('filtered_out', 0)} filtered, "
+        f"{r.get('rejected', 0)} rejected, {r.get('errors', 0)} errors.", level)
+
+
+@app.post("/admin/run/tailor")
+def admin_run_tailor(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    r = tailor_pending(db)
+    level = "warn" if r.get("errors") else "ok"
+    return _admin_redirect(
+        f"Tailoring done: {r.get('ready', 0)} ready, {r.get('review_needed', 0)} need review, "
+        f"{r.get('errors', 0)} errors.", level)
 
 
 # ---------------- Dashboard helpers (all scoped to current_user) ----------------
