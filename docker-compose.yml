@@ -5,6 +5,8 @@ services:
       dockerfile: backend/Dockerfile
     container_name: jobhunter-backend
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:8000"
     env_file:

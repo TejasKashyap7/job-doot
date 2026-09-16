@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Insights — Job Hunter{% endblock %}
+{% block body %}
+<header class="topbar">
+  <h1>Job Hunter</h1>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/jobs">Active</a>
+    <a href="/archive">Archive</a>
+    <a href="/filtered">Filtered ({{ counts.filtered }})</a>
+    <a href="/jobs?review=1">Needs review ({{ counts.needs_review }})</a>
+    <a href="/insights" class="active">Insights</a>
+    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
+  </nav>
+</header>
+
+<form method="get" action="/insights" class="filters">
+  <label>Window
+    <select name="days" onchange="this.form.submit()">
+      <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+      <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+      <option value="180" {% if days == 180 %}selected{% endif %}>Last 180 days</option>
+      <option value="0" {% if days == 0 %}selected{% endif %}>All time</option>
+    </select>
+  </label>
+</form>
+
+<p class="muted insights-note">
+  Based on {{ total_jobs }} job(s){% if days > 0 %} scraped in the last {{ days }} days{% else %} scraped all time{% endif %}.
+  {% if total_jobs < 200 %}Trends get more reliable as more data accumulates — treat these as directional for now.{% endif %}
+  Skill names come straight from the scorer's own wording, so close synonyms (e.g. "RAG" vs "retrieval augmented generation") aren't merged yet.
+</p>
+
+{% if total_jobs == 0 %}
+  <p class="empty">No jobs in this window yet.</p>
+{% else %}
+<div class="insight-grid">
+  <div class="insight-card insight-card-wide">
+    <h3>Top Skills in Demand</h3>
+    <p class="muted">Everything the scorer flagged as a match or a gap, across all jobs — what the market wants most, whether or not you have it.</p>
+    <canvas id="chartSkills"></canvas>
+  </div>
+
+  <div class="insight-card insight-card-wide">
+    <h3>Skill Gap Frequency</h3>
+    <p class="muted">Only what's missing from your profile. Most actionable chart — this is what to learn next.</p>
+    <canvas id="chartGaps"></canvas>
+  </div>
+
+  <div class="insight-card insight-card-wide">
+    <h3>Top 5 Skills Over Time</h3>
+    <p class="muted">Weekly mention count for your 5 most common skills — rising vs. declining demand.</p>
+    <canvas id="chartTrend"></canvas>
+  </div>
+
+  <div class="insight-card">
+    <h3>Domain Breakdown</h3>
+    <p class="muted">How much of what's scraped is actually in-scope for you.</p>
+    <canvas id="chartDomain"></canvas>
+  </div>
+
+  <div class="insight-card">
+    <h3>Score Distribution</h3>
+    <p class="muted">Sanity check — if everything clusters at 3-4, the scorer prompt may need tuning.</p>
+    <canvas id="chartScores"></canvas>
+  </div>
+
+  <div class="insight-card">
+    <h3>Top Hiring Companies</h3>
+    <p class="muted">Who's posting the most AI/ML roles in your feed.</p>
+    <canvas id="chartCompanies"></canvas>
+  </div>
+
+  <div class="insight-card">
+    <h3>Location Distribution</h3>
+    <p class="muted">Remote vs. which cities dominate the postings.</p>
+    <canvas id="chartLocations"></canvas>
+  </div>
+</div>
+
+<p class="muted insights-note">
+  Planned next (not built yet, see <code>.claude/specs/market-insights/approach.md</code>):
+  skill × salary correlation, per-company profiles, experience-level demand by role,
+  and emerging-vs-declining skill trend detection.
+</p>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+const DATA = {{ chart_data | tojson }};
+Chart.defaults.color = "#9aa3b2";
+Chart.defaults.borderColor = "#232a38";
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, Inter, Segoe UI, system-ui, sans-serif";
+
+function truncateLabel(label, max = 58) {
+  return label.length > max ? label.slice(0, max - 1) + "…" : label;
+}
+
+function barChart(id, labels, values, color, horizontal) {
+  new Chart(document.getElementById(id), {
+    type: "bar",
+    data: { labels, datasets: [{ data: values, backgroundColor: color, borderRadius: 6, maxBarThickness: 28 }] },
+    options: {
+      indexAxis: horizontal ? "y" : "x",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: !horizontal } },
+        y: {
+          grid: { display: horizontal },
+          // Truncate long labels on the axis; tooltip below still shows the full text.
+          ticks: horizontal ? { callback: (_val, idx) => truncateLabel(labels[idx]) } : {},
+        },
+      },
+    },
+  });
+}
+
+if (DATA.skillLabels.length) barChart("chartSkills", DATA.skillLabels, DATA.skillValues, "#7c5cff", true);
+if (DATA.gapLabels.length) barChart("chartGaps", DATA.gapLabels, DATA.gapValues, "#ffb86b", true);
+if (DATA.companyLabels.length) barChart("chartCompanies", DATA.companyLabels, DATA.companyValues, "#5db8ff", true);
+if (DATA.locationLabels.length) barChart("chartLocations", DATA.locationLabels, DATA.locationValues, "#3ddc97", true);
+
+if (DATA.weekLabels.length) {
+  new Chart(document.getElementById("chartTrend"), {
+    type: "line",
+    data: {
+      labels: DATA.weekLabels,
+      datasets: DATA.weeklySeries.map(s => ({
+        label: s.label, data: s.data, borderColor: s.color,
+        backgroundColor: s.color + "33", tension: 0.3, fill: false, pointRadius: 2,
+      })),
+    },
+    options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } } } },
+  });
+}
+
+new Chart(document.getElementById("chartDomain"), {
+  type: "doughnut",
+  data: {
+    labels: DATA.domainLabels,
+    datasets: [{ data: DATA.domainValues, backgroundColor: ["#7c5cff", "#3ddc97", "#ffb86b", "#5db8ff", "#ff5d6c"] }],
+  },
+  options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } } } },
+});
+
+new Chart(document.getElementById("chartScores"), {
+  type: "bar",
+  data: {
+    labels: DATA.scoreBuckets.map((_, i) => i),
+    datasets: [{ data: DATA.scoreBuckets, backgroundColor: "#7c5cff", borderRadius: 6 }],
+  },
+  options: { plugins: { legend: { display: false } } },
+});
+</script>
+{% endblock %}

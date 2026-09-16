@@ -240,12 +240,22 @@ def _build_linkedin_session() -> requests.Session | None:
     try:
         resp = s.get(LI_BASE + "/", allow_redirects=True, timeout=15)
     except Exception as exc:
+        # Network/DNS failure, not a cookie problem — a distinct alert so we don't
+        # send the user to re-paste a cookie when the real issue is connectivity.
         log.error("LinkedIn: homepage fetch failed: %s", exc)
+        alerts_svc.set_alert(
+            "linkedin_network_error",
+            "warning",
+            f"LinkedIn scraper hit a network error building its session: {exc}",
+            "Usually transient (DNS/connectivity on the Pi) — retries automatically. "
+            "If this persists for hours, check the Pi's network/DNS.",
+        )
         return None
 
     if _is_expired(resp):
         return None
 
+    alerts_svc.clear_alert("linkedin_network_error")
     jsid = s.cookies.get("JSESSIONID", "")
     s.headers.update({"csrf-token": jsid})
     log.info("LinkedIn session built (JSESSIONID=%s...)", jsid[:8])
@@ -399,9 +409,15 @@ def linkedin_drip_loop(db_factory) -> None:
         try:
             session = _build_linkedin_session()
             if not session:
-                log.info("LinkedIn drip: no session — retrying in 1h")
-                time.sleep(3600)
+                # Was 1h — too slow for the network/DNS blips this most often turns
+                # out to be (see .claude/specs, recurring "why no data" incidents).
+                # A real cookie-expiry keeps re-alerting every 5 min instead of going
+                # silent for an hour at a time.
+                log.info("LinkedIn drip: no session — retrying in 5 min")
+                time.sleep(300)
                 continue
+
+            alerts_svc.clear_alert("linkedin_drip_crashed")
 
             # Startup jitter — don't fire the instant the cookie loads (bot tell).
             jitter = random.uniform(*LI_STARTUP_JITTER_RANGE)
@@ -457,8 +473,14 @@ def linkedin_drip_loop(db_factory) -> None:
                 log.info("LinkedIn drip: sleeping %.0f min before next search", sleep_sec / 60)
                 time.sleep(sleep_sec)
 
-        except Exception:
+        except Exception as exc:
             log.exception("LinkedIn drip crashed — restarting in 5 min")
+            alerts_svc.set_alert(
+                "linkedin_drip_crashed",
+                "error",
+                f"LinkedIn drip thread crashed: {exc}",
+                "Restarts automatically every 5 min. If this keeps recurring, check the logs.",
+            )
             time.sleep(300)
 
 

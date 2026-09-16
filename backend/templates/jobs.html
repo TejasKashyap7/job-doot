@@ -1,13 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Job Hunter{% endblock %}
+{% block title %}Active Jobs — Job Hunter{% endblock %}
 {% block body %}
 <header class="topbar">
   <h1>Job Hunter</h1>
   <nav>
-    <a href="/" class="active">Active</a>
+    <a href="/">Home</a>
+    <a href="/jobs" class="active">Active</a>
     <a href="/archive">Archive</a>
     <a href="/filtered">Filtered ({{ counts.filtered }})</a>
-    <a href="/?review=1"{% if filters.review %} class="active"{% endif %}>Needs review ({{ counts.needs_review }})</a>
+    <a href="/jobs?review=1"{% if filters.review %} class="active"{% endif %}>Needs review ({{ counts.needs_review }})</a>
+    <a href="/insights">Insights</a>
     <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
   </nav>
 </header>
@@ -55,7 +57,7 @@
   {% endfor %}
 </section>
 
-<form method="get" action="/" class="filters">
+<form method="get" action="/jobs" class="filters">
   <label class="search-label">Search
     <div class="search-wrap">
       <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -84,7 +86,10 @@
 </form>
 
 {% if filters.review %}
-<p class="review-banner">Showing only resumes flagged by the tailoring checks — read these before applying. <a href="/">← back to all active</a></p>
+<p class="review-banner">Showing only resumes flagged by the tailoring checks — read these before applying. <a href="/jobs">← back to all active</a></p>
+{% endif %}
+{% if filters.date %}
+<p class="review-banner">Showing active jobs fetched on {{ filters.date }} only. <a href="/jobs">← back to all active</a> · <a href="/">calendar</a></p>
 {% endif %}
 
 {% for date_key, day_jobs in grouped %}
@@ -157,7 +162,7 @@
 
 <dialog id="cal-modal">
   <form method="post" id="cal-form">
-    <input type="hidden" name="next_url" value="/">
+    <input type="hidden" name="next_url" value="/jobs">
     <h3>Add Calendar Event</h3>
     <label>Type
       <select name="event_type" required>

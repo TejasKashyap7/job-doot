@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import logging.handlers
 import os
 import time
 from datetime import datetime
@@ -24,7 +25,20 @@ from groq import Groq, RateLimitError, APIError
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# Persistent, rotating logs — survive container rebuilds/restarts. Own file
+# (separate from the backend's) since this runs as its own process/container
+# sharing the same data/ volume. Kept 30 days.
+_LOG_DIR = Path("/app/data/logs")
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_file_handler = logging.handlers.TimedRotatingFileHandler(
+    _LOG_DIR / "gmail-watcher.log", when="midnight", backupCount=30, utc=True,
+)
+_file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(), _file_handler],
+)
 log = logging.getLogger("gmail-watcher")
 
 # ---------- Config ----------

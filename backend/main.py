@@ -1,8 +1,10 @@
+import calendar as calendar_module
 import logging
+import logging.handlers
 import os
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from contextlib import asynccontextmanager
-from datetime import datetime, time as dtime
+from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
 
 from fastapi import FastAPI, Depends, Form, HTTPException, Request, status
@@ -25,7 +27,20 @@ from agents.tailor_loop import tailor_pending, tailor_for_job
 from agents.quality_check import confidence_label
 from scheduler import start_scheduler, CSV_PATH
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# Persistent, rotating logs — survive container rebuilds/restarts (unlike `docker
+# logs`, which resets every time the container is recreated). Kept 30 days, one
+# file per day, written to the bind-mounted data/ dir so they're SSH-readable.
+_LOG_DIR = Path("/app/data/logs")
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_file_handler = logging.handlers.TimedRotatingFileHandler(
+    _LOG_DIR / "backend.log", when="midnight", backupCount=30, utc=True,
+)
+_file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(), _file_handler],
+)
 log = logging.getLogger("jobhunter")
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -312,9 +327,59 @@ def _counts(db: Session) -> dict:
 # ---------------- Dashboard pages ----------------
 
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_login)])
+def home(request: Request, db: Session = Depends(get_db),
+         year: int | None = None, month: int | None = None):
+    """Calendar home page — how many jobs were fetched each day, by month."""
+    now = datetime.utcnow()
+    year = year or now.year
+    month = month or now.month
+    month = max(1, min(12, month))
+
+    month_start = datetime(year, month, 1)
+    next_month_start = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+
+    rows = (
+        db.query(Job.date_scraped)
+        .filter(Job.date_scraped >= month_start, Job.date_scraped < next_month_start)
+        .all()
+    )
+    counts_by_day: dict[int, int] = {}
+    for (dt,) in rows:
+        if dt:
+            counts_by_day[dt.day] = counts_by_day.get(dt.day, 0) + 1
+
+    weeks = calendar_module.Calendar(firstweekday=0).monthdayscalendar(year, month)
+
+    prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+
+    return templates.TemplateResponse("home.html", {
+        "request": request,
+        "counts": _counts(db),
+        "year": year, "month": month,
+        "month_name": month_start.strftime("%B %Y"),
+        "weeks": weeks,
+        "counts_by_day": counts_by_day,
+        "max_day_count": max(counts_by_day.values()) if counts_by_day else 0,
+        "total_month": sum(counts_by_day.values()),
+        "today": now.day if (now.year == year and now.month == month) else None,
+        "prev_year": prev_year, "prev_month": prev_month,
+        "next_year": next_year, "next_month": next_month,
+    })
+
+
+@app.get("/jobs", response_class=HTMLResponse, dependencies=[Depends(require_login)])
 def dashboard(request: Request, db: Session = Depends(get_db),
-              min_score: int = 0, status: str = "", q: str = "", review: int = 0):
+              min_score: int = 0, status: str = "", q: str = "", review: int = 0,
+              date: str = ""):
     query = db.query(Job).filter(Job.status.in_(ACTIVE_STATUSES))
+    if date:
+        try:
+            day_start = datetime.strptime(date, "%Y-%m-%d")
+            query = query.filter(Job.date_scraped >= day_start,
+                                  Job.date_scraped < day_start + timedelta(days=1))
+        except ValueError:
+            date = ""
     if min_score:
         query = query.filter(Job.score >= min_score)
     if status:
@@ -341,13 +406,113 @@ def dashboard(request: Request, db: Session = Depends(get_db),
         key = r["date_scraped"].strftime("%Y-%m-%d") if r["date_scraped"] else "unknown"
         grouped.setdefault(key, []).append(r)
 
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse("jobs.html", {
         "request": request,
         "grouped": grouped.items(),
         "counts": _counts(db),
         "sources": _sources_status(),
-        "filters": {"min_score": min_score, "status": status, "q": q, "review": review},
+        "filters": {"min_score": min_score, "status": status, "q": q, "review": review, "date": date},
         "score_class": _score_class,
+    })
+
+
+@app.get("/insights", response_class=HTMLResponse, dependencies=[Depends(require_login)])
+def insights_view(request: Request, db: Session = Depends(get_db), days: int = 180):
+    """Market-insights charts aggregated from data the scorer already collected.
+    No extra API calls — see .claude/specs/market-insights/approach.md."""
+    q = db.query(Job)
+    if days > 0:
+        since = datetime.utcnow() - timedelta(days=days)
+        q = q.filter(Job.date_scraped >= since)
+    jobs = q.all()
+    total_jobs = len(jobs)
+
+    # The scorer sometimes writes a role-fit reasoning sentence into top_gaps
+    # (e.g. "Role-type: applied AI at a consulting firm, not core R&D — capped")
+    # instead of an actual skill. Those aren't skills — exclude them from the
+    # skill charts so they don't drown out real signal. Nothing is deleted from
+    # the DB; this only affects what gets plotted here.
+    def _is_skill(s: str) -> bool:
+        return bool(s) and not s.lower().startswith("role-type")
+
+    matches_counter: Counter = Counter()
+    gaps_counter: Counter = Counter()
+    all_skills_counter: Counter = Counter()
+    for j in jobs:
+        for s in (j.top_matches or []):
+            s = (s or "").strip()
+            if _is_skill(s):
+                matches_counter[s] += 1
+                all_skills_counter[s] += 1
+        for s in (j.top_gaps or []):
+            s = (s or "").strip()
+            if _is_skill(s):
+                gaps_counter[s] += 1
+                all_skills_counter[s] += 1
+
+    top_skills = all_skills_counter.most_common(20)
+    top_gaps = gaps_counter.most_common(20)
+
+    # Skills-over-time: weekly buckets for the 5 most common skills overall.
+    top5_names = [name for name, _ in all_skills_counter.most_common(5)]
+    weekly: "OrderedDict[str, dict[str, int]]" = OrderedDict()
+    for j in sorted((j for j in jobs if j.date_scraped), key=lambda j: j.date_scraped):
+        week_key = j.date_scraped.strftime("%Y-W%W")
+        bucket = weekly.setdefault(week_key, {name: 0 for name in top5_names})
+        for s in list(j.top_matches or []) + list(j.top_gaps or []):
+            s = (s or "").strip()
+            if s in bucket:
+                bucket[s] += 1
+    week_labels = list(weekly.keys())
+    weekly_series = {name: [weekly[w][name] for w in week_labels] for name in top5_names}
+
+    # domain_flag is meant to be one of a handful of short categories, but the
+    # scorer occasionally writes a full sentence instead — bucket anything
+    # off-vocabulary as "other" so the chart stays readable (raw value is
+    # still on the Job row, this only affects this chart's grouping).
+    CANONICAL_DOMAINS = {"in-scope", "out-of-scope", "borderline", "unclassified"}
+    domain_counter: Counter = Counter()
+    for j in jobs:
+        flag = (j.domain_flag or "unclassified").strip()
+        domain_counter[flag if flag in CANONICAL_DOMAINS else "other"] += 1
+
+    company_counter = Counter(j.company for j in jobs if j.company)
+    location_counter = Counter((j.location or "unspecified").strip() for j in jobs)
+
+    score_buckets = [0] * 11
+    for j in jobs:
+        if j.score is not None:
+            score_buckets[max(0, min(10, round(j.score)))] += 1
+
+    domain_items = domain_counter.most_common()
+    top_companies = company_counter.most_common(15)
+    top_locations = location_counter.most_common(15)
+    chart_colors = ["#7c5cff", "#3ddc97", "#ffb86b", "#5db8ff", "#ff5d6c"]
+
+    return templates.TemplateResponse("insights.html", {
+        "request": request,
+        "counts": _counts(db),
+        "days": days,
+        "total_jobs": total_jobs,
+        "chart_data": {
+            "skillLabels": [s for s, _ in top_skills],
+            "skillValues": [c for _, c in top_skills],
+            "gapLabels": [s for s, _ in top_gaps],
+            "gapValues": [c for _, c in top_gaps],
+            "weekLabels": week_labels,
+            "weeklySeries": [
+                {"label": name, "data": weekly_series[name],
+                 "color": chart_colors[i % len(chart_colors)]}
+                for i, name in enumerate(top5_names)
+            ],
+            "domainLabels": [d for d, _ in domain_items],
+            "domainValues": [c for _, c in domain_items],
+            "companyLabels": [c for c, _ in top_companies],
+            "companyValues": [n for _, n in top_companies],
+            "locationLabels": [l for l, _ in top_locations],
+            "locationValues": [n for _, n in top_locations],
+            "scoreBuckets": score_buckets,
+        },
     })
 
 
@@ -397,7 +562,7 @@ def mark_applied(job_id: int, db: Session = Depends(get_db)):
     job.status = "applied"
     job.date_applied = datetime.utcnow()
     db.commit()
-    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url="/jobs", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/jobs/{job_id}/unapply", dependencies=[Depends(require_login)])

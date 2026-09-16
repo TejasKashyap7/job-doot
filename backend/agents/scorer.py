@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from agents.prompts import SCORER_SYSTEM
 from database.models import Job
-from services.groq_client import chat_json
+from services.local_llm_client import chat_json
 from services import telegram as tg
 import services.alerts as alerts_svc
 

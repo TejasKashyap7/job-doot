@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Home — Job Hunter{% endblock %}
+{% block body %}
+<header class="topbar">
+  <h1>Job Hunter</h1>
+  <nav>
+    <a href="/" class="active">Home</a>
+    <a href="/jobs">Active</a>
+    <a href="/archive">Archive</a>
+    <a href="/filtered">Filtered ({{ counts.filtered }})</a>
+    <a href="/jobs?review=1">Needs review ({{ counts.needs_review }})</a>
+    <a href="/insights">Insights</a>
+    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
+  </nav>
+</header>
+
+<section class="stats">
+  <div class="stat">
+    <div class="label">Active</div>
+    <div class="value accent">{{ counts.active }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Awaiting Scoring</div>
+    <div class="value">{{ counts.pending }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Fetched This Month</div>
+    <div class="value success">{{ total_month }}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Needs Review</div>
+    <div class="value warning">{{ counts.needs_review }}</div>
+  </div>
+</section>
+
+<section class="cal-wrap">
+  <div class="cal-header">
+    <a class="cal-nav" href="/?year={{ prev_year }}&month={{ prev_month }}" aria-label="previous month">&larr;</a>
+    <h2>{{ month_name }}</h2>
+    <a class="cal-nav" href="/?year={{ next_year }}&month={{ next_month }}" aria-label="next month">&rarr;</a>
+  </div>
+
+  <div class="cal-grid cal-grid-head">
+    {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+      <div class="cal-dow">{{ d }}</div>
+    {% endfor %}
+  </div>
+
+  {% for week in weeks %}
+  <div class="cal-grid">
+    {% for day in week %}
+      {% if day == 0 %}
+        <div class="cal-day cal-day-empty"></div>
+      {% else %}
+        {% set n = counts_by_day.get(day, 0) %}
+        {% set intensity = (0.10 + 0.55 * n / max_day_count) if (n > 0 and max_day_count > 0) else 0 %}
+        <a class="cal-day{% if day == today %} cal-day-today{% endif %}{% if n > 0 %} cal-day-has{% endif %}"
+           style="{% if n > 0 %}background: rgba(124,92,255,{{ '%.2f' | format(intensity) }});{% endif %}"
+           href="/jobs?date={{ '%04d-%02d-%02d' | format(year, month, day) }}"
+           title="{{ n }} job(s) fetched on {{ '%04d-%02d-%02d' | format(year, month, day) }}">
+          <span class="cal-day-num">{{ day }}</span>
+          {% if n > 0 %}<span class="cal-day-count">{{ n }}</span>{% endif %}
+        </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <p class="muted cal-legend">Each day shows how many jobs the scraper fetched — click a day to see that day's active jobs. Darker = more jobs. This counts everything fetched (including filtered/rejected); the <a href="/jobs">Active</a> list only shows jobs worth reviewing.</p>
+</section>
+{% endblock %}

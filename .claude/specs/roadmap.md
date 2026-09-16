@@ -159,7 +159,7 @@ the jobs you've been pulling. Only useful once you have weeks of real data.
 |------|--------|
 | Decide data retention window (Flaw 8) | ✅ (180-day rolling window) |
 | Add minimum-data guard (hide charts if < N jobs) (Flaw 10) | ✅ (accepted as non-issue) |
-| Build `/insights` route + template with charts | ❌ |
+| Build `/insights` route + template with charts | ✅ (2026-09-05) |
 | **Skills-edge dashboard**: compare JD-demanded skills/certs (from scraped jobs) against LOCKED_SKILL_SET — show (a) which of Tejas's skills are rare-but-demanded (his EDGE), (b) which demanded skills/certs he lacks (gaps worth learning), ranked by frequency × salary signal | ❌ |
 
 **Depends on:** M6 (need real data from Pi runs)
