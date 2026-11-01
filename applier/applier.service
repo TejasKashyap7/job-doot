@@ -1,0 +1,19 @@
+# systemd USER unit — runs inside the Pi desktop session (needs Wayland + the
+# logged-in Chromium profile). Code is the `applier` branch worktree at ~/job-doot-applier.
+# Install:
+#   mkdir -p ~/.config/systemd/user && cp applier/applier.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now applier
+[Unit]
+Description=job-doot apply agent (LinkedIn Easy Apply)
+After=graphical-session.target
+
+[Service]
+WorkingDirectory=%h/job-doot-applier
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=APPLIER_DATA=%h/job-doot/data/applier
+ExecStart=%h/.venvs/applier/bin/python -m applier.run daemon --profile vishal
+Restart=on-failure
+RestartSec=120
+
+[Install]
+WantedBy=default.target

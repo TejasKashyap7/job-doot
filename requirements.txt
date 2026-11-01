@@ -40,3 +40,8 @@ lxml==5.2.2
 
 # ---- Telegram utilities (one-time cleanup script only, not deployed) ----
 telethon==1.36.0
+
+# ---- Apply agent (M11; runs on the Pi host, see applier/) ----
+playwright==1.64.1            # drives the Pi's real Chromium over CDP (no bundled browser)
+python-ghost-cursor==0.1.1    # human-like bezier mouse paths (port of Xetera/ghost-cursor)
+bezier==2024.6.20             # ghost-cursor dependency; on Py3.13 install with BEZIER_NO_EXTENSION=true

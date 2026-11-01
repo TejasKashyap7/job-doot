@@ -1,0 +1,271 @@
+"""Drive one LinkedIn Easy Apply application, step by step.
+
+Returns (status, detail, steps) where status is applied|skipped|failed|paused and
+detail starts with a short machine reason, e.g. "not_easy_apply", "question: ...".
+"""
+import logging
+import random
+import re
+import time
+
+from . import safety, store
+from .brain import BrainError, answer_fields
+from .human import Human, pause
+
+log = logging.getLogger(__name__)
+
+MAX_STEPS = 15
+
+# Marks every form control in the dialog with data-ja="<id>" and describes it.
+EXTRACT_JS = r"""
+(dialog) => {
+  const out = []; let n = 0;
+  const clean = s => (s || '').replace(/\s+/g, ' ').trim();
+  const vis = el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+    return s.visibility !== 'hidden' && s.display !== 'none' && (r.width > 0 || r.height > 0); };
+  const labelOf = el => {
+    if (el.id) { const l = dialog.querySelector(`label[for="${CSS.escape(el.id)}"]`); if (l) return clean(l.innerText); }
+    if (el.getAttribute('aria-label')) return clean(el.getAttribute('aria-label'));
+    const l = el.closest('label'); if (l) return clean(l.innerText);
+    const fs = el.closest('fieldset'); if (fs && fs.querySelector('legend')) return clean(fs.querySelector('legend').innerText);
+    return clean(el.name);
+  };
+  const isReq = (el, box) => el.required || el.getAttribute('aria-required') === 'true' ||
+    /\brequired\b/i.test(box ? box.innerText : '');
+  const seen = new Set();
+  for (const el of dialog.querySelectorAll('input, select, textarea')) {
+    const tag = el.tagName;
+    const type = tag === 'SELECT' ? 'select' : tag === 'TEXTAREA' ? 'textarea' : (el.type || 'text');
+    if (['hidden', 'submit', 'button', 'file', 'search'].includes(type)) continue;
+    if (type === 'radio') {
+      const fs = el.closest('fieldset');
+      const key = fs || el.name;
+      if (seen.has(key)) continue; seen.add(key);
+      const radios = [...(fs ? fs.querySelectorAll('input[type=radio]')
+                              : dialog.querySelectorAll(`input[type=radio][name="${CSS.escape(el.name)}"]`))];
+      // resume picker cards are radios too — skip them, handled separately
+      if (radios.some(r => /document|resume/i.test(r.id + ' ' + r.name))) continue;
+      const id = 'f' + (n++);
+      const opts = radios.map((r, i) => { r.setAttribute('data-ja', id + '_' + i);
+        const l = r.id && dialog.querySelector(`label[for="${CSS.escape(r.id)}"]`);
+        return clean(l ? l.innerText : r.value); });
+      const ci = radios.findIndex(r => r.checked);
+      out.push({ id, type: 'radio', options: opts, value: ci >= 0 ? opts[ci] : '',
+        label: fs && fs.querySelector('legend') ? clean(fs.querySelector('legend').innerText) : labelOf(el),
+        required: radios.some(r => r.required) || isReq(el, fs) });
+      continue;
+    }
+    if (type !== 'checkbox' && !vis(el)) continue;
+    const id = 'f' + (n++); el.setAttribute('data-ja', id);
+    const box = el.closest('[data-test-form-element], .fb-dash-form-element, .jobs-easy-apply-form-element');
+    const f = { id, type, label: labelOf(el).slice(0, 300), required: isReq(el, null) };
+    if (type === 'checkbox') f.value = el.checked ? 'yes' : '';
+    else if (type === 'select') {
+      f.options = [...el.options].map(o => clean(o.text)).filter(t => t && !/^select an option$/i.test(t));
+      const cur = el.options[el.selectedIndex];
+      f.value = cur && !/^select an option$/i.test(clean(cur.text)) ? clean(cur.text) : '';
+    } else f.value = el.value || '';
+    if (el.getAttribute('role') === 'combobox' || el.getAttribute('aria-autocomplete')) f.typeahead = true;
+    const err = box && box.querySelector('.artdeco-inline-feedback--error');
+    if (err) f.error = clean(err.innerText);
+    out.push(f);
+  }
+  return out;
+}
+"""
+
+PRIMARY_BUTTONS = [
+    ('button[aria-label="Submit application"]', "submit"),
+    ('button[aria-label="Review your application"]', "review"),
+    ('button[aria-label="Continue to next step"]', "next"),
+]
+
+
+def _visible(locator):
+    for i in range(locator.count()):
+        el = locator.nth(i)
+        if el.is_visible():
+            return el
+    return None
+
+
+def _dialog(page):
+    return _visible(page.locator("div[role='dialog'].jobs-easy-apply-modal, div.jobs-easy-apply-modal, div[role='dialog']"))
+
+
+def _errors(dialog) -> str:
+    texts = dialog.locator(".artdeco-inline-feedback--error").all_inner_texts()
+    return "; ".join(t.strip() for t in texts if t.strip())
+
+
+def _discard(page, human: Human):
+    try:
+        x = _visible(page.locator("button[aria-label='Dismiss']"))
+        if x:
+            human.click(x)
+            pause(1, 2)
+        btn = _visible(page.locator("button[data-control-name='discard_application_confirm_btn'], "
+                                    "button:has-text('Discard')"))
+        if btn:
+            human.click(btn)
+            pause(1, 2)
+    except Exception as exc:
+        log.warning("discard failed: %s", exc)
+
+
+def _handle_resume(dialog, cfg):
+    """Upload the applicant's PDF on the resume step unless one is already selected."""
+    inputs = dialog.locator("input[type=file]")
+    if inputs.count() == 0:
+        return
+    selected = dialog.locator("[class*='document-upload'][class*='selected'], "
+                              "input[type=radio][id*='Document']:checked, "
+                              "input[type=radio][id*='resume' i]:checked")
+    if selected.count() > 0:
+        return
+    for i in range(inputs.count()):
+        inp = inputs.nth(i)
+        ctx = inp.evaluate("e => (e.closest('div') && e.closest('div').parentElement"
+                           " ? e.closest('div').parentElement.innerText : '')").lower()
+        if "resume" in ctx or "cv" in ctx or i == 0 and "cover" not in ctx:
+            inp.set_input_files(cfg["resume_pdf"])
+            pause(3, 5)
+            return
+
+
+def _fill(page, dialog, human: Human, fields: list[dict], answers: dict):
+    by_id = {f["id"]: f for f in fields}
+    for fid, value in answers.items():
+        f = by_id[fid]
+        t = f["type"]
+        if t == "radio":
+            idx = f["options"].index(value)
+            r = dialog.locator(f'[data-ja="{fid}_{idx}"]').first
+            rid = r.get_attribute("id")
+            target = dialog.locator(f'label[for="{rid}"]').first if rid else r
+            human.click(target)
+        elif t == "checkbox":
+            el = dialog.locator(f'[data-ja="{fid}"]').first
+            want = value.strip().lower() in ("yes", "true", "checked", "1")
+            if want != el.is_checked():
+                eid = el.get_attribute("id")
+                lab = dialog.locator(f'label[for="{eid}"]').first if eid else None
+                human.click(lab if lab and lab.count() else el)
+        elif t == "select":
+            el = dialog.locator(f'[data-ja="{fid}"]').first
+            human.hover(el)
+            el.select_option(label=value)
+        else:
+            el = dialog.locator(f'[data-ja="{fid}"]').first
+            human.type(el, value)
+            if f.get("typeahead"):
+                pause(1.2, 2.2)
+                opt = _visible(page.locator("[role='listbox'] [role='option']"))
+                if opt:
+                    human.click(opt)
+        pause(0.5, 1.8)
+
+
+def _needs_answer(f: dict) -> bool:
+    if f.get("error"):
+        return True
+    if f["type"] == "checkbox":
+        return f.get("required") and not f.get("value")
+    return not f.get("value")
+
+
+def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
+    applicant = cfg["name"]
+    human = None
+    page.goto(job["url"], wait_until="domcontentloaded")
+    pause(3, 6)
+    if (hit := safety.check(page)):
+        return "paused", f"safety:{hit}", 0
+    human = Human(page)
+    body = page.inner_text("body").lower()
+    if "no longer accepting applications" in body:
+        return "skipped", "closed", 0
+    if re.search(r"\bapplied\b \d+ \w+ ago", body) or "application submitted" in body:
+        return "skipped", "already_applied", 0
+
+    human.read_page()
+    btn = None
+    for sel in ("button.jobs-apply-button:has-text('Easy Apply')",          # top card
+                "button[aria-label*='Easy Apply']",
+                ".jobs-s-apply a:has-text('Easy Apply'), .jobs-apply-button--top-card a"):
+        btn = _visible(page.locator(sel))
+        if btn:
+            break
+    if not btn:
+        return "skipped", "not_easy_apply", 0
+    human.click(btn)
+    pause(2, 4)
+
+    steps, last_err, retried = 0, "", False
+    while steps < MAX_STEPS:
+        if (hit := safety.check(page)):
+            return "paused", f"safety:{hit}", steps
+        dialog = _dialog(page)
+        if dialog is None:
+            return "failed", "modal_missing", steps
+        steps += 1
+        _handle_resume(dialog, cfg)
+
+        fields = dialog.evaluate(EXTRACT_JS)
+        todo = [f for f in fields if _needs_answer(f)]
+        if todo:
+            try:
+                res = answer_fields(cfg, todo, store.answered(conn, applicant), job, last_err)
+            except BrainError as exc:
+                _discard(page, human)
+                return "failed", f"brain:{exc}"[:300], steps
+            if res["unknown"]:
+                new_qs = []
+                for fid in res["unknown"]:
+                    f = next(x for x in todo if x["id"] == fid)
+                    if store.add_question(conn, applicant, f["label"], f["type"], f.get("options"), job["id"]):
+                        new_qs.append(f["label"])
+                _discard(page, human)
+                labels = "; ".join(next(x["label"] for x in todo if x["id"] == u) for u in res["unknown"])
+                return "skipped", f"question:{labels}"[:500], steps
+            _fill(page, dialog, human, todo, res["answers"])
+
+        primary, kind = None, None
+        for sel, k in PRIMARY_BUTTONS:
+            primary = _visible(dialog.locator(sel))
+            if primary:
+                kind = k
+                break
+        if not primary:
+            primary = _visible(dialog.locator("footer button.artdeco-button--primary"))
+            kind = "submit" if primary and "submit" in (primary.inner_text() or "").lower() else "next"
+        if not primary:
+            _discard(page, human)
+            return "failed", "no_primary_button", steps
+
+        human.click(primary)
+        pause(2.5, 4.5)
+
+        if kind == "submit":
+            for _ in range(10):
+                txt = page.inner_text("body").lower()
+                if "application was sent" in txt or "application sent" in txt or "applied" in txt and "your application" in txt:
+                    done = _visible(page.locator("button:has-text('Done'), button[aria-label='Dismiss']"))
+                    if done:
+                        pause(1, 3)
+                        human.click(done)
+                    return "applied", "submitted", steps
+                time.sleep(1)
+            return "failed", "no_confirmation_after_submit", steps
+
+        dialog = _dialog(page)
+        err = _errors(dialog) if dialog else ""
+        if err:
+            if retried:
+                _discard(page, human)
+                return "failed", f"form_errors:{err}"[:300], steps
+            retried, last_err = True, err
+        else:
+            retried, last_err = False, ""
+    _discard(page, human)
+    return "failed", "too_many_steps", steps

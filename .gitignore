@@ -21,3 +21,8 @@ data/logs/
 backend/data/
 *.session
 tools/*.session
+
+# Apply agent — personal data + runtime state
+applier/profiles/*.yaml
+!applier/profiles/example.yaml
+data/applier/

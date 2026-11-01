@@ -183,6 +183,7 @@ blackout. Each source = its own module, own health state, own repair lane.
 | A no-captcha API spy (e.g. **Adzuna** — free, India coverage, built for programmatic use) | ❌ |
 | Naukri via browser automation (Playwright/Selenium + stealth) OR drop it for the API | ❌ |
 | Per-source isolation — one source's break/repair never blocks the others | ❌ |
+| More platforms (decided 2026-11-01): Naukri, Indeed, Wellfound, + candidates (Instahyre, Cutshort, Adzuna API) — each its own spy, own account/cookie, own health state | ❌ |
 
 **Depends on:** M6. **Higher priority than M10** — the spec says so outright.
 
@@ -201,12 +202,102 @@ escalates bot-walls/cookie-expiry, and evolves via a curated lessons store. Full
 | Escalation report + Telegram + lessons store + human curation gate | ❌ |
 | Close the 17 open SA-flaws (`scraper-agent/flaws.md`) — many close only by building + measuring | ❌ |
 
+| **Automatic triggers + weekly health check-up** (decided 2026-11-01) — see below | ❌ |
+
 **Depends on:** M9 (needs ≥1 stable source + the multi-source structure first).
 **Note:** does NOT fix bot-walls (recaptcha) — those escalate to a browser spy in M9.
 
-### M11 — LinkedIn Easy Apply automation (deferred)
-Schema hooks already exist (`Job.easy_apply`, `application_attempts` table). Start only
-after Phase 1 is stable on Pi.
+#### Weekly health check-up — the "doctor visit" for the Spies (decided 2026-11-01)
+Analogy: the **Spies** (sources) go out and bring back jobs; the **Sensor** is the daily
+pulse check (canary query: did each spy return jobs with valid fields?); the **Duo**
+(Developer + Auditor) is the surgery team that repairs a broken spy. New: a **weekly
+full check-up** that catches *slow* decay the daily pulse misses — a site update that
+didn't break the scraper outright but quietly lost a field, cut volume, or changed format.
+- **Fully automatic, on triggers** — no human needed to *start* it:
+  - Daily: Sensor canary per spy (cheap, no LLM).
+  - On failure: Sensor routes by class → Duo repair or escalation (existing design).
+  - Weekly: a scheduled check-up agent (headless Claude, per D1) runs the
+    `scraper-agent/audit-playbook.md` checklist on its own — per-spy volume trend vs last
+    weeks, per-field fill rates vs golden-record schema, duplicates, cookie age/expiry,
+    repairs merged this week — and sends a short report to Telegram.
+- **Repairer = Claude Code first, Duo only as fallback** (decided 2026-11-01): with the
+  Claude subscription, headless Claude Code (whole-project context) fixes a broken spy
+  directly, and a second fresh-context Claude call reviews the fix before commit (keeps
+  the Auditor idea, drops the custom Developer agent). The Groq-based Duo is built only if
+  Claude isn't available. Scope limits (only `services/sources/**`, git-revertable,
+  canary must pass) still apply.
+- **No human step needed** (fully autonomous, decided 2026-11-01): red items trigger the
+  repair automatically; the Telegram report is FYI. Only things the Duo can't fix in
+  code (bot-wall, expired cookie, banned account) ask Tejas for action. The check-up
+  still never changes code outside the Duo's scoped lane.
+- Changes `audit-playbook.md` cadence from "human-initiated" to "auto-run, human-reviewed"
+  — update that file before building.
+
+### M11 — LinkedIn Easy Apply automation (design decided 2026-11-01, not built)
+Schema hooks already exist (`Job.easy_apply`, `application_attempts` table).
+- **Human-like input: ghost-cursor** (decided). An LLM reads the Easy Apply form and
+  decides the answers; a separate "hands" layer (Playwright + ghost-cursor) does curved
+  mouse paths with overshoot, Fitts's-law timing, human typing delays and natural scrolls.
+- **Pacing:** 1–2 applications at a time, at random times through the day (active hours
+  only), never a fixed clock time. Hard daily cap.
+- **Test on a throwaway account FIRST.** A separate dummy LinkedIn account (NOT the
+  Hugh Janus scraper account, NOT Tejas's main) runs the applier for a trial period. Only
+  if it survives with no restriction/captcha does the applier move to the main account.
+  If it gets banned, we lose only the throwaway and learn why.
+  - Open points: warm the test account up with normal manual use first (a brand-new
+    account is watched harder, so a ban may not mean ghost-cursor failed); trial length
+    + pass criteria; what profile/resume the test account applies with.
+- **Fully autonomous — no daily human step** (decided 2026-11-01). The whole point is that
+  it applies while Tejas is at his full-time job. No approval queue, no ticking.
+  - The agent picks jobs itself: score ≥ threshold + Tejas's **preference filters**
+    (role, location/remote, salary, company exclusions, etc.) stored as config.
+  - When Tejas states a new preference, it gets added to that filter config — that is
+    the only way he steers it.
+  - Guardrails that need no human: daily cap, random pacing, never fabricate,
+    **auto-pause** on any captcha / restriction / unusual-activity signal + Telegram alert.
+  - Telegram daily digest of what was applied to — FYI only, no reply needed.
+- **Q&A bank — questions it can't answer** (decided 2026-11-01):
+  - If a form asks something not covered by the profile / locked skill set / Q&A bank
+    (notice period, expected CTC, "years with Kubernetes?", visa, relocation…), the agent
+    **skips that job for now** (doesn't guess), saves the question to the bank as
+    UNANSWERED, and Telegrams it to Tejas.
+  - Tejas answers whenever convenient (Telegram reply or dashboard page). The answer is
+    stored; the skipped job is retried on a later slot.
+  - Next time a **similar** question appears (same meaning, different wording), the agent
+    reuses the stored answer. Over time the bank fills up and skips trend to zero.
+  - Bank is per-user (multi-user), viewable/editable on the dashboard.
+- **Where it runs: the Pi** (decided 2026-11-01). The applier's LinkedIn account is logged
+  in once inside a persistent Chromium profile on the Pi (via a one-time remote screen /
+  VNC session); the session cookie then lives in that profile. Pi is always on, same home
+  IP the account normally uses. Not cloud routines (they can't reach a browser).
+- **Random triggers — same logic as the fetcher** (decided 2026-11-01): each day the
+  scheduler picks a few random slots inside active hours; at each slot it takes 1–2 jobs
+  from the already-fetched, already-scored pool and applies back-to-back with random gaps.
+- **Brain: Claude subscription, not the small model** (decided 2026-11-01, builds on D1):
+  headless Claude Code on the Pi (`claude -p` + OAuth token) does tailoring + form answers
+  for the jobs it applies to. Packaged as a Claude Code **skill** ("apply-to-job") holding
+  all the apply logic. Groq/Ollama stay for high-volume first-pass scoring.
+  - Token-saving split: Claude reads the form once and returns all answers as JSON;
+    the Playwright + ghost-cursor script does the clicking. Claude doesn't drive every click.
+  - Fallback if Claude quota runs out: pause applying (don't fall back to the small model
+    for live applications) and resume next window.
+- **Orchestration tool: existing Python scheduler, not n8n** (recommended 2026-11-01):
+  every step is code (browser, LaTeX, DB) so n8n would only call our scripts and add a
+  container to run/secure on the Pi. Flow stays: scheduler slot → pick job → Claude skill
+  (tailor + answers) → ghost-cursor fills + submits → log `application_attempts` → digest.
+  A flow diagram of this goes in the apply-agent spec so it's as easy to read as n8n.
+- Full design spec → `.claude/specs/apply-agent/approach.md` (written 2026-11-01).
+  Test applicant = Vishal's account (logged in on the Pi); live Submit from day one.
+
+---
+
+## Future Work (later phases — not scheduled)
+
+### F1 — LinkedIn profile & engagement booster (added 2026-11-01)
+Research + tooling for what actually grows LinkedIn reach and recruiter views: profile
+optimisation (headline, About, featured, skills ordering vs what JDs ask for), posting
+cadence/format, engagement habits, and measuring what works (profile views, search
+appearances, recruiter InMails). Likely reuses scraped JD skill data (M8 skills-edge).
 
 ---
 
