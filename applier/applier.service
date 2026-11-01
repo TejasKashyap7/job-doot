@@ -11,7 +11,7 @@ After=graphical-session.target
 WorkingDirectory=%h/job-doot-applier
 Environment=WAYLAND_DISPLAY=wayland-0
 Environment=APPLIER_DATA=%h/job-doot/data/applier
-ExecStart=%h/.venvs/applier/bin/python -m applier.run daemon --profile vishal
+ExecStart=%h/.venvs/applier311/bin/python -m applier.run daemon --profile vishal
 Restart=on-failure
 RestartSec=120
 

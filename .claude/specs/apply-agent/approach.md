@@ -90,8 +90,9 @@ Failure screenshots: `data/applier/shots/` (last 50). Log: `data/applier/applier
 ## Deploy (as built)
 Code lives on branch `applier`, checked out on the Pi as a separate git worktree
 `~/job-doot-applier` (so the main auto-deploy poller on `~/job-doot` is untouched);
-`APPLIER_DATA=~/job-doot/data/applier`. Python venv `~/.venvs/applier` (Pi host Py3.13;
-bezier installed with `BEZIER_NO_EXTENSION=true`). CLI: `python -m applier.run
+`APPLIER_DATA=~/job-doot/data/applier`. Python venv `~/.venvs/applier311` — Python 3.11
+(made with `uv`, matches the project's 3.11 standard; bezier has no Py3.13 aarch64 wheel and
+its source build fails on the Pi's 3.13). CLI: `python -m applier.run
 once|daemon|status|qa|answer|resume`. Answer questions until `/qa` exists:
 `applier.run qa` then `applier.run answer <id> "<text>"`.
 
