@@ -152,24 +152,44 @@ def _discard(page, human: Human):
         log.warning("discard failed: %s", exc)
 
 
-def _handle_resume(dialog, cfg):
-    """Upload the applicant's PDF on the resume step unless one is already selected."""
-    inputs = dialog.locator("input[type=file]")
-    if inputs.count() == 0:
+def _handle_resume(page, dialog, human: Human, cfg) -> None:
+    """Resume step: if no resume is already chosen, click "Upload resume" like a person
+    and give the file picker the applicant's PDF. (LinkedIn's 2026 modal creates the
+    file input only when the button is clicked.)"""
+    text = dialog.inner_text().lower()
+    if "resume" not in text or "upload" not in text:
         return
-    selected = dialog.locator("[class*='document-upload'][class*='selected'], "
-                              "input[type=radio][id*='Document']:checked, "
-                              "input[type=radio][id*='resume' i]:checked")
-    if selected.count() > 0:
-        return
-    for i in range(inputs.count()):
-        inp = inputs.nth(i)
-        ctx = inp.evaluate("e => (e.closest('div') && e.closest('div').parentElement"
-                           " ? e.closest('div').parentElement.innerText : '')").lower()
-        if "resume" in ctx or "cv" in ctx or i == 0 and "cover" not in ctx:
-            inp.set_input_files(cfg["resume_pdf"])
-            pause(3, 5)
+    if dialog.locator("input[type=radio]:checked, [role=radio][aria-checked=true]").count() > 0:
+        return  # a previously uploaded resume is already selected
+    btn = None
+    for sel in ("label:has-text('Upload resume')", "button:has-text('Upload resume')",
+                "[role=button]:has-text('Upload resume')", "label:has-text('Upload')",
+                "button:has-text('Upload')"):
+        btn = _visible(dialog.locator(sel))
+        if btn:
+            break
+    try:
+        if btn:
+            with page.expect_file_chooser(timeout=8000) as fc:
+                human.click(btn)
+            fc.value.set_files(cfg["resume_pdf"])
+            log.info("  uploaded resume via file chooser")
+        else:
+            inp = dialog.locator("input[type=file]")
+            if inp.count() == 0:
+                log.info("  resume step: no upload control found")
+                return
+            inp.first.set_input_files(cfg["resume_pdf"])
+            log.info("  uploaded resume via file input")
+    except Exception as exc:
+        inp = dialog.locator("input[type=file]")
+        if inp.count():
+            inp.first.set_input_files(cfg["resume_pdf"])
+            log.info("  uploaded resume via file input (chooser failed: %s)", str(exc)[:80])
+        else:
+            log.warning("  resume upload failed: %s", exc)
             return
+    pause(3, 5)
 
 
 def _fill(page, dialog, human: Human, fields: list[dict], answers: dict):
@@ -248,7 +268,7 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
         if dialog is None:
             return "failed", "modal_missing", steps
         steps += 1
-        _handle_resume(dialog, cfg)
+        _handle_resume(page, dialog, human, cfg)
 
         fields = dialog.evaluate(EXTRACT_JS)
         todo = [f for f in fields if _needs_answer(f)]
