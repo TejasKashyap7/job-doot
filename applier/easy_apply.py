@@ -33,7 +33,8 @@ EXTRACT_JS = r"""
   // 2026 layout: questions are plain text above the control, not linked by <label>.
   // Returns {label, raw}: walks up from the control and reads the block's text with the
   // control itself and its option labels removed (2026 layout has no <label> for questions).
-  const contextLabel = (el, stripEls) => {
+  const contextLabel = (el, stripEls, optTexts) => {
+    const optOnly = clean((optTexts || []).join('')).replace(/\s/g, '').toLowerCase();
     (stripEls || []).forEach(x => x && x.setAttribute('data-ja-strip', '1'));
     let n = el;
     for (let i = 0; i < 7 && n && n !== dialog; i++) {
@@ -41,7 +42,9 @@ EXTRACT_JS = r"""
       const c = n.cloneNode(true);
       c.querySelectorAll('[data-ja-strip], input, select, textarea, option, button').forEach(x => x.remove());
       const t = clean((c.textContent || '').replace(/this field is required|\*|\b\d+\/\d+\b|\d+ of \d+ characters/gi, ' '));
-      if (t.length > 3) return { label: t.slice(0, 300), raw: n.innerText || '' };
+      const flat = t.replace(/\s/g, '').toLowerCase();
+      if (t.length > 3 && flat !== optOnly && !/^(yes|no)+$/.test(flat))
+        return { label: t.slice(0, 300), raw: n.innerText || '' };
     }
     return { label: '', raw: '' };
   };
@@ -61,9 +64,12 @@ EXTRACT_JS = r"""
       // resume picker cards are radios too — skip them, handled separately
       if (radios.some(r => /document|resume/i.test(r.id + ' ' + r.name))) continue;
       const id = 'f' + (n++);
+      const optEl = r => (r.id && dialog.querySelector(`label[for="${CSS.escape(r.id)}"]`)) || r.closest('label')
+        || (r.parentElement && r.parentElement.querySelectorAll('input[type=radio]').length === 1
+            && clean(r.parentElement.innerText).length > 0 && clean(r.parentElement.innerText).length < 40 ? r.parentElement : null);
       const opts = radios.map((r, i) => { r.setAttribute('data-ja', id + '_' + i);
-        const l = r.id && dialog.querySelector(`label[for="${CSS.escape(r.id)}"]`);
-        return clean(l ? l.innerText : r.value); });
+        const l = optEl(r);
+        return clean(l ? l.innerText : (r.getAttribute('aria-label') || r.value)); });
       const ci = radios.findIndex(r => r.checked);
       out.push({ id, type: 'radio', options: opts, value: ci >= 0 ? opts[ci] : '',
         ...(() => {
@@ -73,8 +79,8 @@ EXTRACT_JS = r"""
           }
           let c = radios[0].parentElement;
           while (c && c !== dialog && !radios.every(r => c.contains(r))) c = c.parentElement;
-          const optLabels = radios.map(r => r.id && dialog.querySelector(`label[for="${CSS.escape(r.id)}"]`));
-          const cl = contextLabel(c || el, [...radios, ...optLabels]);
+          const optLabels = radios.map(optEl).filter(x => x && !radios.every(r => x.contains(r)));
+          const cl = contextLabel(c || el, [...radios, ...optLabels], opts);
           return { label: cl.label || labelOf(el),
                    required: radios.some(r => r.required || r.getAttribute('aria-required') === 'true')
                              || /\*|required/i.test(cl.raw) };
