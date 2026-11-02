@@ -69,6 +69,7 @@ EXTRACT_JS = r"""
     const holder = box || el.closest('div');
     const err = holder && (holder.querySelector("[role='alert']") || holder.querySelector('.artdeco-inline-feedback--error'));
     if (err) f.error = clean(err.innerText);
+    else if (el.getAttribute('aria-invalid') === 'true') f.error = 'marked invalid by the form';
     out.push(f);
   }
   return out;
@@ -117,8 +118,23 @@ def _primary(dialog):
 
 
 def _errors(dialog) -> str:
-    texts = dialog.locator("[role='alert'], .artdeco-inline-feedback--error").all_inner_texts()
+    texts = dialog.locator("[role='alert'], [aria-live='assertive'], .artdeco-inline-feedback--error").all_inner_texts()
     return "; ".join(t.strip() for t in texts if t.strip())
+
+
+def _snapshot(page, job_id, tag):
+    """Screenshot + dialog text while the modal is still open (for debugging)."""
+    try:
+        from .config import DATA
+        shots = DATA / "shots"
+        shots.mkdir(parents=True, exist_ok=True)
+        stem = shots / f"{time.strftime('%Y%m%d-%H%M%S')}_{job_id}_{tag}"
+        page.screenshot(path=f"{stem}.png")
+        d = _dialog(page, wait=0)
+        if d:
+            (shots / f"{stem.name}.txt").write_text(d.inner_text()[:5000])
+    except Exception as exc:
+        log.warning("snapshot failed: %s", exc)
 
 
 def _discard(page, human: Human):
@@ -224,7 +240,7 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
     human.click(btn)
     pause(2, 4)
 
-    steps, last_err, retried = 0, "", False
+    steps, last_err, stuck = 0, "", 0
     while steps < MAX_STEPS:
         if (hit := safety.check(page)):
             return "paused", f"safety:{hit}", steps
@@ -236,28 +252,33 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
 
         fields = dialog.evaluate(EXTRACT_JS)
         todo = [f for f in fields if _needs_answer(f)]
+        before = " ".join(dialog.inner_text().split())[:400]
+        log.info("  step %d: %d fields, to fill: %s", steps, len(fields),
+                 [f"{f['label'][:40]}{' (ERR: ' + f['error'][:40] + ')' if f.get('error') else ''}" for f in todo])
         if todo:
             try:
                 res = answer_fields(cfg, todo, store.answered(conn, applicant), job, last_err)
             except BrainError as exc:
+                _snapshot(page, job["id"], "brain")
                 _discard(page, human)
                 return "failed", f"brain:{exc}"[:300], steps
             if res["unknown"]:
-                new_qs = []
                 for fid in res["unknown"]:
                     f = next(x for x in todo if x["id"] == fid)
-                    if store.add_question(conn, applicant, f["label"], f["type"], f.get("options"), job["id"]):
-                        new_qs.append(f["label"])
+                    store.add_question(conn, applicant, f["label"], f["type"], f.get("options"), job["id"])
                 _discard(page, human)
                 labels = "; ".join(next(x["label"] for x in todo if x["id"] == u) for u in res["unknown"])
                 return "skipped", f"question:{labels}"[:500], steps
+            log.info("  answers: %s", {next(x["label"][:30] for x in todo if x["id"] == k): v[:30]
+                                       for k, v in res["answers"].items()})
             _fill(page, dialog, human, todo, res["answers"])
 
         primary, kind = _primary(dialog)
         if not primary:
+            _snapshot(page, job["id"], "nobutton")
             _discard(page, human)
             return "failed", "no_primary_button", steps
-
+        log.info("  clicking %s", kind)
         human.click(primary)
         pause(2.5, 4.5)
 
@@ -272,16 +293,22 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
                         human.click(done)
                     return "applied", "submitted", steps
                 time.sleep(1)
+            _snapshot(page, job["id"], "noconfirm")
             return "failed", "no_confirmation_after_submit", steps
 
         dialog = _dialog(page, wait=3)
+        after = " ".join(dialog.inner_text().split())[:400] if dialog else ""
         err = _errors(dialog) if dialog else ""
-        if err:
-            if retried:
+        if after == before or err:
+            stuck += 1
+            last_err = err or "the form did not move to the next page; some answer is missing or invalid"
+            log.info("  form did not advance (%d): %s", stuck, last_err[:200])
+            if stuck >= 2:
+                _snapshot(page, job["id"], "stuck")
                 _discard(page, human)
-                return "failed", f"form_errors:{err}"[:300], steps
-            retried, last_err = True, err
+                return "failed", f"stuck:{last_err}"[:300], steps
         else:
-            retried, last_err = False, ""
+            stuck, last_err = 0, ""
+    _snapshot(page, job["id"], "steps")
     _discard(page, human)
     return "failed", "too_many_steps", steps
