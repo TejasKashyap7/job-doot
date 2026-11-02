@@ -66,7 +66,8 @@ EXTRACT_JS = r"""
       f.value = cur && !/^select an option$/i.test(clean(cur.text)) ? clean(cur.text) : '';
     } else f.value = el.value || '';
     if (el.getAttribute('role') === 'combobox' || el.getAttribute('aria-autocomplete')) f.typeahead = true;
-    const err = box && box.querySelector('.artdeco-inline-feedback--error');
+    const holder = box || el.closest('div');
+    const err = holder && (holder.querySelector("[role='alert']") || holder.querySelector('.artdeco-inline-feedback--error'));
     if (err) f.error = clean(err.innerText);
     out.push(f);
   }
@@ -74,11 +75,9 @@ EXTRACT_JS = r"""
 }
 """
 
-PRIMARY_BUTTONS = [
-    ('button[aria-label="Submit application"]', "submit"),
-    ('button[aria-label="Review your application"]', "review"),
-    ('button[aria-label="Continue to next step"]', "next"),
-]
+# LinkedIn's 2026 modal: obfuscated classes, buttons identified only by their text.
+PRIMARY_TEXT = [("submit application", "submit"), ("submit", "submit"),
+                ("review", "review"), ("next", "next"), ("continue", "next")]
 
 
 def _visible(locator):
@@ -89,12 +88,36 @@ def _visible(locator):
     return None
 
 
-def _dialog(page):
-    return _visible(page.locator("div[role='dialog'].jobs-easy-apply-modal, div.jobs-easy-apply-modal, div[role='dialog']"))
+def _dialog(page, wait: float = 12):
+    """The Easy Apply modal: a <dialog> inside LinkedIn's #interop-outlet shadow root
+    (Playwright pierces open shadow roots). Older layouts used div[role=dialog]."""
+    end = time.time() + wait
+    while True:
+        d = _visible(page.locator("dialog")) or _visible(page.locator(
+            "div.jobs-easy-apply-modal, div[role='dialog']"))
+        if d or time.time() > end:
+            return d
+        time.sleep(0.5)
+
+
+def _primary(dialog):
+    btns = dialog.locator("button")
+    best = None
+    for i in range(btns.count()):
+        b = btns.nth(i)
+        if not b.is_visible():
+            continue
+        txt = " ".join((b.inner_text() or b.get_attribute("aria-label") or "").lower().split())
+        for rank, (key, kind) in enumerate(PRIMARY_TEXT):
+            if txt == key or txt.startswith(key):
+                if best is None or rank < best[0]:
+                    best = (rank, b, kind)
+                break
+    return (best[1], best[2]) if best else (None, None)
 
 
 def _errors(dialog) -> str:
-    texts = dialog.locator(".artdeco-inline-feedback--error").all_inner_texts()
+    texts = dialog.locator("[role='alert'], .artdeco-inline-feedback--error").all_inner_texts()
     return "; ".join(t.strip() for t in texts if t.strip())
 
 
@@ -105,7 +128,7 @@ def _discard(page, human: Human):
             human.click(x)
             pause(1, 2)
         btn = _visible(page.locator("button[data-control-name='discard_application_confirm_btn'], "
-                                    "button:has-text('Discard')"))
+                                    "dialog button:has-text('Discard'), button:has-text('Discard')"))
         if btn:
             human.click(btn)
             pause(1, 2)
@@ -230,15 +253,7 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
                 return "skipped", f"question:{labels}"[:500], steps
             _fill(page, dialog, human, todo, res["answers"])
 
-        primary, kind = None, None
-        for sel, k in PRIMARY_BUTTONS:
-            primary = _visible(dialog.locator(sel))
-            if primary:
-                kind = k
-                break
-        if not primary:
-            primary = _visible(dialog.locator("footer button.artdeco-button--primary"))
-            kind = "submit" if primary and "submit" in (primary.inner_text() or "").lower() else "next"
+        primary, kind = _primary(dialog)
         if not primary:
             _discard(page, human)
             return "failed", "no_primary_button", steps
@@ -247,8 +262,9 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
         pause(2.5, 4.5)
 
         if kind == "submit":
-            for _ in range(10):
-                txt = page.inner_text("body").lower()
+            for _ in range(15):
+                d = _dialog(page, wait=0)
+                txt = (page.inner_text("body") + " " + (d.inner_text() if d else "")).lower()
                 if "application was sent" in txt or "application sent" in txt or "applied" in txt and "your application" in txt:
                     done = _visible(page.locator("button:has-text('Done'), button[aria-label='Dismiss']"))
                     if done:
@@ -258,7 +274,7 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
                 time.sleep(1)
             return "failed", "no_confirmation_after_submit", steps
 
-        dialog = _dialog(page)
+        dialog = _dialog(page, wait=3)
         err = _errors(dialog) if dialog else ""
         if err:
             if retried:

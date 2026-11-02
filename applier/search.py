@@ -15,9 +15,10 @@ CARDS_JS = r"""
     const lines = (card.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
     out[id] = { title: lines[0] || '', company: lines.find((l, i) => i > 0 && l !== lines[0]) || '' };
   };
-  document.querySelectorAll('[data-job-id]').forEach(e => add(e.getAttribute('data-job-id'), e));
-  document.querySelectorAll('a[href*="/jobs/view/"]').forEach(a => {
-    const m = a.href.match(/jobs\/view\/(\d+)/); if (m) add(m[1], a); });
+  document.querySelectorAll('[data-job-id],[data-occludable-job-id]').forEach(e =>
+    add(e.getAttribute('data-job-id') || e.getAttribute('data-occludable-job-id'), e));
+  document.querySelectorAll('a[href*="/jobs/view/"], a[href*="currentJobId="]').forEach(a => {
+    const m = a.href.match(/jobs\/view\/(\d+)|currentJobId=(\d+)/); if (m) add(m[1] || m[2], a); });
   return out;
 }
 """
