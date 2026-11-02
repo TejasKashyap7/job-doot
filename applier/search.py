@@ -72,7 +72,8 @@ def search_jobs(page, cfg) -> list[dict]:
                 if not tag.is_visible():
                     continue
                 # skip the "Easy Apply" filter pill (a button) — clicking it would toggle the filter
-                if tag.evaluate("e => !!e.closest('button,[role=button],[aria-pressed],[role=checkbox]')"):
+                if tag.evaluate("""e => { const b = e.closest('button,[role=button],[aria-pressed],[role=checkbox]');
+                                      return !!b && (b.innerText || '').trim().length < 25; }"""):
                     continue
                 card_text = tag.evaluate("""e => { let n = e;
                     for (let k = 0; k < 8 && n.parentElement; k++) { n = n.parentElement;
@@ -90,6 +91,7 @@ def search_jobs(page, cfg) -> list[dict]:
                                          "company": lines[1] if len(lines) > 1 else ""}
             except Exception as exc:
                 log.info("card %d skipped: %s", i, str(exc)[:80])
+        log.info("browsed %d cards", clicked)
     log.info("search '%s' -> %d jobs", kw, len(jobs))
     out = [{"id": i, "url": f"https://www.linkedin.com/jobs/view/{i}/",
             "title": (v["title"] or f"LinkedIn job {i}")[:120], "company": v["company"][:80],
