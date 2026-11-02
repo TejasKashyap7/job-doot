@@ -9,6 +9,9 @@ max_per_slot: 2
 slots_per_day: [6, 8]
 active_hours: [10, 20]
 models: {primary: haiku, retry: sonnet}
+source: db                     # db (score rule) | linkedin_search (test mode, see spec)
+# search_keywords: ["AI Engineer", "Machine Learning Engineer"]
+# search_location: India
 facts: |
   Name: ...
   Email: ...

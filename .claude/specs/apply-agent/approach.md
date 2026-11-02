@@ -152,3 +152,25 @@ since the Mac-side "no .venv" rule is about the conda env on the Mac).
 5. Daily random-slot scheduler, daily cap, Telegram alerts + digest.
 6. `/qa` dashboard page.
 7. Deploy to Pi as a systemd user service; first live slot watched via Pi Connect.
+
+## Test mode — LinkedIn search source (decided 2026-11-02)
+First live rounds (20 top-scored jobs) found 0 Easy Apply jobs: the fetched pool is mostly
+closed or offsite-apply. To test detection now, the applier can take jobs from a LinkedIn
+search done in the applicant's own browser, like a person would: profile setting
+`source: linkedin_search` + `search_keywords`, URL filters Easy Apply only (`f_AL=true`),
+India, past week. Results are NOT scored (test only — Tejas approved skipping the score
+rule for the detection test, Vishal gave full permission). Attempts are keyed by the
+LinkedIn job id. Default source stays `db` (score rule).
+
+## Phase 2 — apply to ANY job, not only Easy Apply (decided 2026-11-02, not built)
+Offsite "Apply ↗" jobs: follow the link and fill the company form.
+- No-account ATS (Greenhouse, Lever, Ashby, SmartRecruiters, plain forms) → fill with the
+  same brain + hands; Haiku writes a short honest cover note/"why us" from the JD + facts.
+- Account-required or captcha ATS (Workday, Taleo, iCIMS login, SuccessFactors) → skip,
+  list in the digest as "apply by hand".
+- Scraper should record apply type (easy / offsite + ATS host) so the applier picks
+  efficiently instead of opening pages to find out.
+
+## Notifications privacy (decided 2026-11-02)
+Nothing goes to Tejas's monitored office email. All alerts/digests/questions → Telegram
+(phone); optional copy to personal Gmail only.

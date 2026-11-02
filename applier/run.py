@@ -21,6 +21,7 @@ from .browser import Session
 from .config import DATA, load_profile
 from .easy_apply import apply_to_job
 from .human import pause
+from .search import SafetyStop, search_jobs
 
 log = logging.getLogger("applier")
 
@@ -53,14 +54,24 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
     conn = store.connect()
     applicant = cfg["name"]
     excluded = store.excluded_job_ids(conn, applicant)
-    jobs = [j for j in backend.candidate_jobs(cfg) if j["id"] not in excluded]
-    if not jobs:
-        log.info("No eligible jobs left")
-        return
     target = max_apply or random.randint(1, cfg["max_per_slot"])
-    log.info("Slot: target %d application(s), %d candidate jobs", target, len(jobs))
     applied = views = 0
     with Session(cfg) as page:
+        if cfg.get("source") == "linkedin_search":
+            try:
+                found = search_jobs(page, cfg)
+            except SafetyStop as stop:
+                safety.pause(f"safety:{stop}")
+                notify.send(cfg, f"🛑 Applier paused for {applicant} on job search: {stop}")
+                return
+        else:
+            found = backend.candidate_jobs(cfg)
+        jobs = [j for j in found if j["id"] not in excluded]
+        if not jobs:
+            log.info("No eligible jobs left")
+            return
+        log.info("Slot: target %d application(s), %d candidate jobs (source=%s)",
+                 target, len(jobs), cfg.get("source", "db"))
         for job in jobs:
             if applied >= target or views >= cfg["max_views_per_slot"]:
                 break
