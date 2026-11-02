@@ -2,7 +2,10 @@
 import random
 import time
 
-from python_ghost_cursor.playwright_sync import create_cursor
+from ._bezier_shim import install as _install_bezier_shim
+
+_install_bezier_shim()  # must run before ghost-cursor imports `bezier`
+from python_ghost_cursor.playwright_sync import create_cursor  # noqa: E402
 
 
 def pause(a: float, b: float) -> None:
