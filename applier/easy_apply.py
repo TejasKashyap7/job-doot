@@ -30,6 +30,18 @@ EXTRACT_JS = r"""
     const fs = el.closest('fieldset'); if (fs && fs.querySelector('legend')) return clean(fs.querySelector('legend').innerText);
     return clean(el.name);
   };
+  // 2026 layout: questions are plain text above the control, not linked by <label>.
+  const contextLabel = (el, skip) => {
+    let n = el;
+    for (let i = 0; i < 6 && n && n !== dialog; i++) {
+      n = n.parentElement; if (!n) break;
+      let t = clean(n.innerText);
+      for (const o of skip) t = t.split(o).join(' ');
+      t = clean(t.replace(/this field is required|\*|\d+\/\d+|\d+ of \d+ characters/gi, ' '));
+      if (t.length > 3) return t.slice(0, 300);
+    }
+    return '';
+  };
   const isReq = (el, box) => el.required || el.getAttribute('aria-required') === 'true' ||
     /\brequired\b/i.test(box ? box.innerText : '');
   const seen = new Set();
@@ -51,14 +63,20 @@ EXTRACT_JS = r"""
         return clean(l ? l.innerText : r.value); });
       const ci = radios.findIndex(r => r.checked);
       out.push({ id, type: 'radio', options: opts, value: ci >= 0 ? opts[ci] : '',
-        label: fs && fs.querySelector('legend') ? clean(fs.querySelector('legend').innerText) : labelOf(el),
-        required: radios.some(r => r.required) || isReq(el, fs) });
+        label: fs && fs.querySelector('legend') ? clean(fs.querySelector('legend').innerText)
+               : (() => { let c = radios[0].parentElement;
+                          while (c && c !== dialog && !radios.every(r => c.contains(r))) c = c.parentElement;
+                          return contextLabel(c || el, opts) || labelOf(el); })(),
+        required: radios.some(r => r.required || r.getAttribute('aria-required') === 'true') || isReq(el, fs)
+                  || /\*|required/i.test((radios[0].closest('fieldset, [role=radiogroup]') || radios[0].parentElement.parentElement || el).innerText || '') });
       continue;
     }
     if (type !== 'checkbox' && !vis(el)) continue;
     const id = 'f' + (n++); el.setAttribute('data-ja', id);
     const box = el.closest('[data-test-form-element], .fb-dash-form-element, .jobs-easy-apply-form-element');
-    const f = { id, type, label: labelOf(el).slice(0, 300), required: isReq(el, null) };
+    let lab = labelOf(el);
+    if (!lab || lab === el.name) lab = contextLabel(el, el.tagName === 'SELECT' ? [...el.options].map(o => clean(o.text)) : []);
+    const f = { id, type, label: lab.slice(0, 300), required: isReq(el, null) };
     if (type === 'checkbox') f.value = el.checked ? 'yes' : '';
     else if (type === 'select') {
       f.options = [...el.options].map(o => clean(o.text)).filter(t => t && !/^select an option$/i.test(t));
@@ -119,7 +137,8 @@ def _primary(dialog):
 
 def _errors(dialog) -> str:
     texts = dialog.locator("[role='alert'], [aria-live='assertive'], .artdeco-inline-feedback--error").all_inner_texts()
-    return "; ".join(t.strip() for t in texts if t.strip())
+    bad = re.compile(r"required|invalid|valid |enter a|please|must|error|select an|too (long|short)|between", re.I)
+    return "; ".join(t.strip() for t in texts if t.strip() and bad.search(t) and "success" not in t.lower())
 
 
 def _snapshot(page, job_id, tag):
