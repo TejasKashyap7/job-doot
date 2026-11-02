@@ -31,16 +31,19 @@ EXTRACT_JS = r"""
     return clean(el.name);
   };
   // 2026 layout: questions are plain text above the control, not linked by <label>.
-  const contextLabel = (el, skip) => {
+  // Returns {label, raw}: walks up from the control and reads the block's text with the
+  // control itself and its option labels removed (2026 layout has no <label> for questions).
+  const contextLabel = (el, stripEls) => {
+    (stripEls || []).forEach(x => x && x.setAttribute('data-ja-strip', '1'));
     let n = el;
-    for (let i = 0; i < 6 && n && n !== dialog; i++) {
+    for (let i = 0; i < 7 && n && n !== dialog; i++) {
       n = n.parentElement; if (!n) break;
-      let t = clean(n.innerText);
-      for (const o of skip) t = t.split(o).join(' ');
-      t = clean(t.replace(/this field is required|\*|\d+\/\d+|\d+ of \d+ characters/gi, ' '));
-      if (t.length > 3) return t.slice(0, 300);
+      const c = n.cloneNode(true);
+      c.querySelectorAll('[data-ja-strip], input, select, textarea, option, button').forEach(x => x.remove());
+      const t = clean((c.textContent || '').replace(/this field is required|\*|\b\d+\/\d+\b|\d+ of \d+ characters/gi, ' '));
+      if (t.length > 3) return { label: t.slice(0, 300), raw: n.innerText || '' };
     }
-    return '';
+    return { label: '', raw: '' };
   };
   const isReq = (el, box) => el.required || el.getAttribute('aria-required') === 'true' ||
     /\brequired\b/i.test(box ? box.innerText : '');
@@ -63,20 +66,31 @@ EXTRACT_JS = r"""
         return clean(l ? l.innerText : r.value); });
       const ci = radios.findIndex(r => r.checked);
       out.push({ id, type: 'radio', options: opts, value: ci >= 0 ? opts[ci] : '',
-        label: fs && fs.querySelector('legend') ? clean(fs.querySelector('legend').innerText)
-               : (() => { let c = radios[0].parentElement;
-                          while (c && c !== dialog && !radios.every(r => c.contains(r))) c = c.parentElement;
-                          return contextLabel(c || el, opts) || labelOf(el); })(),
-        required: radios.some(r => r.required || r.getAttribute('aria-required') === 'true') || isReq(el, fs)
-                  || /\*|required/i.test((radios[0].closest('fieldset, [role=radiogroup]') || radios[0].parentElement.parentElement || el).innerText || '') });
+        ...(() => {
+          if (fs && fs.querySelector('legend')) {
+            const lg = fs.querySelector('legend').innerText;
+            return { label: clean(lg), required: radios.some(r => r.required) || /\*|required/i.test(fs.innerText) };
+          }
+          let c = radios[0].parentElement;
+          while (c && c !== dialog && !radios.every(r => c.contains(r))) c = c.parentElement;
+          const optLabels = radios.map(r => r.id && dialog.querySelector(`label[for="${CSS.escape(r.id)}"]`));
+          const cl = contextLabel(c || el, [...radios, ...optLabels]);
+          return { label: cl.label || labelOf(el),
+                   required: radios.some(r => r.required || r.getAttribute('aria-required') === 'true')
+                             || /\*|required/i.test(cl.raw) };
+        })() });
       continue;
     }
     if (type !== 'checkbox' && !vis(el)) continue;
     const id = 'f' + (n++); el.setAttribute('data-ja', id);
     const box = el.closest('[data-test-form-element], .fb-dash-form-element, .jobs-easy-apply-form-element');
     let lab = labelOf(el);
-    if (!lab || lab === el.name) lab = contextLabel(el, el.tagName === 'SELECT' ? [...el.options].map(o => clean(o.text)) : []);
-    const f = { id, type, label: lab.slice(0, 300), required: isReq(el, null) };
+    let ctxRaw = '';
+    if (!lab || lab === el.name) {
+      const cl = contextLabel(el, [el]);
+      lab = cl.label; ctxRaw = cl.raw;
+    }
+    const f = { id, type, label: lab.slice(0, 300), required: isReq(el, null) || /\*/.test(lab) || /\*|required/i.test(ctxRaw) };
     if (type === 'checkbox') f.value = el.checked ? 'yes' : '';
     else if (type === 'select') {
       f.options = [...el.options].map(o => clean(o.text)).filter(t => t && !/^select an option$/i.test(t));
