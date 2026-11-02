@@ -3,6 +3,7 @@ filter on, like a person would do it. Results are not scored (see spec, "Test mo
 import logging
 import random
 import re
+import time
 import urllib.parse
 
 from . import safety
@@ -51,28 +52,42 @@ def search_jobs(page, cfg) -> list[dict]:
     found = page.evaluate(CARDS_JS)
     jobs = {int(i): {"title": v["title"], "company": v["company"]} for i, v in found.items()}
     if len(jobs) <= 1:
-        # 2026 search page (/jobs/search-results/): cards carry no job ids; the id of the
-        # clicked card shows up in the URL as currentJobId. Browse cards like a person.
-        cards = page.locator("li").filter(has_text="Easy Apply")
-        human.wheel(-2000)
-        pause(1, 2)
-        for i in range(min(cards.count(), MAX_CARDS + 4)):
-            if len(jobs) >= MAX_CARDS:
+        # 2026 search page (/jobs/search-results/): results load slowly and cards carry no
+        # job ids. Each card shows an "Easy Apply" tag; clicking a card selects it and puts
+        # its id in the URL (currentJobId). Browse cards like a person.
+        tags = page.get_by_text("Easy Apply", exact=True)
+        for _ in range(20):
+            if tags.count() > 2:
                 break
-            card = cards.nth(i)
+            time.sleep(1)
+        m = re.search(r"currentJobId=(\d+)", page.url)
+        if m:
+            jobs.setdefault(int(m.group(1)), {"title": "", "company": ""})
+        clicked = 0
+        for i in range(tags.count()):
+            if len(jobs) >= MAX_CARDS or clicked >= MAX_CARDS + 2:
+                break
+            tag = tags.nth(i)
             try:
-                if not card.is_visible():
+                if not tag.is_visible():
                     continue
-                lines = [l.strip() for l in card.inner_text().split("\n") if l.strip()]
-                link = card.locator("a").first
-                human.click(link if link.count() else card)
+                # skip the "Easy Apply" filter pill (a button) — clicking it would toggle the filter
+                if tag.evaluate("e => !!e.closest('button,[role=button],[aria-pressed],[role=checkbox]')"):
+                    continue
+                card_text = tag.evaluate("""e => { let n = e;
+                    for (let k = 0; k < 8 && n.parentElement; k++) { n = n.parentElement;
+                      if ((n.innerText || '').split('\\n').filter(Boolean).length >= 4) break; }
+                    return n.innerText || ''; }""")
+                human.click(tag)
+                clicked += 1
                 pause(1.5, 4)
                 m = re.search(r"currentJobId=(\d+)", page.url)
                 if not m:
                     continue
-                lines = [re.sub(r"^Selected, |\s*\(Verified job\)$", "", l) for l in lines]
-                jobs.setdefault(int(m.group(1)), {"title": lines[0] if lines else "",
-                                                  "company": lines[1] if len(lines) > 1 else ""})
+                lines = [re.sub(r"^Selected, |\s*\(Verified job\)$", "", l.strip())
+                         for l in card_text.split("\n") if l.strip()]
+                jobs[int(m.group(1))] = {"title": lines[0] if lines else "",
+                                         "company": lines[1] if len(lines) > 1 else ""}
             except Exception as exc:
                 log.info("card %d skipped: %s", i, str(exc)[:80])
     log.info("search '%s' -> %d jobs", kw, len(jobs))
