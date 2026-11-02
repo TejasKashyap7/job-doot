@@ -183,7 +183,7 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
         return "paused", f"safety:{hit}", 0
     human = Human(page)
     body = page.inner_text("body").lower()
-    if "no longer accepting applications" in body:
+    if "no longer accepting applications" in body or "not currently accepting applications" in body:
         return "skipped", "closed", 0
     if re.search(r"\bapplied\b \d+ \w+ ago", body) or "application submitted" in body:
         return "skipped", "already_applied", 0
