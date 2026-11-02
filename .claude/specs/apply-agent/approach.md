@@ -174,3 +174,13 @@ Offsite "Apply ↗" jobs: follow the link and fill the company form.
 ## Notifications privacy (decided 2026-11-02)
 Nothing goes to Tejas's monitored office email. All alerts/digests/questions → Telegram
 (phone); optional copy to personal Gmail only.
+
+## Live test results + switch to scored jobs (2026-11-02)
+- Search test mode: 3 real Easy Apply submissions on Vishal's account (SpeedMart AI
+  Engineer + 2 Generative AI roles), ~30 job pages over ~10 runs, no captcha / security
+  check / warning. LinkedIn's 2026 Easy Apply modal and search page needed new handling
+  (dialog in shadow root, text-only buttons, file-chooser upload, unlinked question text,
+  card browsing) — all built and verified live.
+- **Decision (Tejas):** Vishal now applies to ALL of Tejas's scored jobs with
+  **score >= 5** (was 7), source `db`, daily schedule on, 2 per slot. Offsite-apply jobs
+  are skipped (recorded `not_easy_apply`) until Phase 2; they should be revisited then.
