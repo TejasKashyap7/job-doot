@@ -8,15 +8,19 @@ import subprocess
 
 _JOBS = r"""
 import json, sqlite3, sys
-uid, min_score = int(sys.argv[1]), float(sys.argv[2])
+uid, min_score, include_offsite = int(sys.argv[1]), float(sys.argv[2]), sys.argv[3] == "1"
 c = sqlite3.connect('/app/data/jobs.db')
-rows = c.execute('''
-  SELECT j.id, j.title, j.company, j.apply_url, s.score
+cols = {r[1] for r in c.execute('PRAGMA table_info(jobs)')}
+has_type = 'apply_type' in cols
+type_sql = "j.apply_type" if has_type else "NULL"
+where_type = "" if (include_offsite or not has_type) else " AND (j.apply_type IS NULL OR j.apply_type != 'offsite')"
+rows = c.execute(f'''
+  SELECT j.id, j.title, j.company, j.apply_url, s.score, {type_sql}
   FROM jobs j JOIN job_user_state s ON s.job_id = j.id
-  WHERE s.user_id = ? AND s.score >= ? AND j.apply_url LIKE '%linkedin.com/jobs/view/%'
-  ORDER BY j.date_scraped DESC
+  WHERE s.user_id = ? AND s.score >= ? AND j.apply_url LIKE '%linkedin.com/jobs/view/%'{where_type}
+  ORDER BY CASE {type_sql} WHEN 'easy' THEN 0 WHEN 'offsite' THEN 2 ELSE 1 END, j.date_scraped DESC
 ''', (uid, min_score)).fetchall()
-print(json.dumps([dict(id=r[0], title=r[1], company=r[2], url=r[3], score=r[4]) for r in rows]))
+print(json.dumps([dict(id=r[0], title=r[1], company=r[2], url=r[3], score=r[4], apply_type=r[5]) for r in rows]))
 """
 
 _TG = r"""
@@ -37,7 +41,9 @@ def _run(container: str, code: str, *args) -> object:
 
 
 def candidate_jobs(cfg) -> list[dict]:
-    return _run(cfg["backend_container"], _JOBS, cfg["pick_jobs_from_user_id"], cfg["min_score"])
+    # Company-site ("offsite") jobs are skipped until the Phase 2 company-site applier ships.
+    return _run(cfg["backend_container"], _JOBS, cfg["pick_jobs_from_user_id"], cfg["min_score"],
+                "1" if cfg.get("include_offsite") else "0")
 
 
 def telegram_creds(cfg) -> dict | None:
