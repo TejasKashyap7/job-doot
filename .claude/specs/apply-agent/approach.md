@@ -225,3 +225,24 @@ run never stalls. Parked jobs are listed in the daily digest.
   company sites (their own /login pages must not pause the whole applier).
 - Profile flags: `offsite: true` enables it; `include_offsite: true` lets the job query
   return company-site jobs.
+
+## Phase 3 — account-based ATS + email verification (decided 2026-11-03, NOT built yet)
+**Explicit permission (Tejas, 2026-11-03):** the agent MAY create job-portal accounts
+(Workday, Taleo, iCIMS, SuccessFactors, …) with his details, and MAY read verification
+OTPs / links from **his own Gmail `tejas06012005@gmail.com` ONLY** to verify those
+accounts. **Not Vishal's mail** — the agent never reads Vishal's inbox.
+- Scope: Gmail API, read-only, query limited to verification mails from the portal's
+  domain in the last few minutes; extract code or link; nothing else is read or stored.
+- Passwords: strong random per portal, stored in a chmod-600 file on the Pi
+  (`data/applier/vault`), never in git / chat / logs; reused to log back in.
+- Still parked (needs_human): SMS/phone OTP, CAPTCHA on sign-up.
+- **Timing:** build + test only when the applier switches to Tejas's own identity. Until
+  then Vishal's account keeps running the detection test (Easy Apply + Phase 2 no-account
+  sites); account-based ATS stay parked. If Vishal's account gets flagged → change
+  strategy before moving to Tejas's account.
+
+## Parked-job notifications (decided 2026-11-03)
+- Each needs_human job → instant Telegram message: job, company, why, direct link to the
+  application page so Tejas can apply by hand. Plus the 21:30 digest list.
+- Telegram reply to mark a parked job done (so it leaves the list) — to build.
+- Never to the monitored office mailbox.
