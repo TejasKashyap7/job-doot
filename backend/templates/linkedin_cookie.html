@@ -1,18 +1,11 @@
 {% extends "base.html" %}
-{% block title %}LinkedIn Cookie — Job Hunter{% endblock %}
+{% set nav = "admin" %}
+{% from "_ui.html" import page_head with context %}
+{% block title %}LinkedIn cookie · job-doot{% endblock %}
 {% block body %}
-<header class="topbar">
-  <h1>Job Hunter</h1>
-  <nav>
-    <a href="/">Active</a>
-    <a href="/archive">Archive</a>
-    <a href="/filtered">Filtered</a>
-    <a href="/admin/linkedin-cookie" class="active">LinkedIn cookie</a>
-    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
-  </nav>
-</header>
+{{ page_head("LinkedIn cookie", sub="Admin · scraper login") }}
 
-<section class="cookie-page">
+<section class="cookie-page card">
   <h2>Update LinkedIn session cookie</h2>
   <p class="cookie-muted">The scraper signs into the dummy account with one cookie
     (<code>li_at</code>) that LinkedIn expires every 1&ndash;2 weeks. Paste a fresh
@@ -42,7 +35,7 @@
     <textarea id="li_at" name="li_at" rows="4" placeholder="AQED&hellip;"
               spellcheck="false" autocomplete="off" required></textarea>
     <div class="cookie-actions">
-      <button type="submit">Save &amp; resume scraper</button>
+      <button type="submit" class="btn">Save &amp; resume scraper</button>
       <a class="cookie-guide" href="https://claude.ai/code/artifact/3ab1aa5f-43a0-4767-8764-3d9ad146e9e4"
          target="_blank" rel="noopener">How do I get this cookie? &rarr;</a>
     </div>

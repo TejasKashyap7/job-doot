@@ -1,0 +1,113 @@
+{# Shared UI pieces for the "A · Night rings" look. Spec: .claude/specs/dashboard/ui-redesign-night.md #}
+
+{% macro icon(name) -%}
+{%- if name == "today" -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/></svg>
+{%- elif name == "jobs" -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="3"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+{%- elif name == "insights" -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+{%- elif name == "archive" -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v10h14V9M10 13h4"/></svg>
+{%- elif name == "admin" -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{# Page header: small line above a big title, optional right-hand slot, account chip on phones. #}
+{% macro page_head(title, sub="", right="") -%}
+<header class="ph">
+  <div class="ph__txt">{% if sub %}<div class="ph__sub">{{ sub }}</div>{% endif %}<h1>{{ title }}</h1></div>
+  <div class="ph__right">
+    {{ right|safe }}
+    {% if current_user is defined and current_user %}
+    <details class="acct">
+      <summary aria-label="Account"><span class="avatar">{{ current_user.username[0]|upper }}</span></summary>
+      <div class="acct__menu">
+        <span class="muted">Signed in as {{ current_user.username }}</span>
+        <form method="post" action="/logout"><button type="submit" class="btn btn--ghost btn--sm">Sign out</button></form>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+</header>
+{%- endmacro %}
+
+{% macro score_ring(score) -%}
+{%- set s = score or 0 -%}
+<span class="sring {{ 'sring--hi' if s >= 8 else ('sring--mid' if s >= 6 else 'sring--lo') }}" style="--v:{{ '%.2f'|format(s) }}" title="score {{ '%.1f'|format(s) }} / 10"><b>{{ ('%.1f'|format(s)).rstrip('0').rstrip('.') }}</b></span>
+{%- endmacro %}
+
+{% set STATUS_LABEL = {"ready": "ready", "review_needed": "review", "scored": "scored", "tailoring": "tailoring", "applied": "applied", "filtered_out": "filtered"} %}
+
+{# One job, as a card. mode: "active" (jobs list), "archive", "filtered", "mini" (Today list). #}
+{% macro job_card(job, mode="active") -%}
+<article class="job">
+  <div class="job__main">
+    {{ score_ring(job.score) }}
+    <div class="job__txt">
+      {% if job.apply_url %}<a class="job__t" href="{{ job.apply_url }}" target="_blank" rel="noopener">{{ job.title }}</a>
+      {% else %}<span class="job__t">{{ job.title }}</span>{% endif %}
+      <div class="job__c">{{ job.company }}{% if job.location %} &middot; {{ job.location }}{% endif %}{% if job.salary and mode != "mini" %} &middot; {{ job.salary }}{% endif %}</div>
+      {% if mode != "mini" %}
+      <div class="job__tags">
+        {% if job.remote_flag %}<span class="tag">remote</span>{% endif %}
+        {% if mode == "active" %}<span class="tag tag--{{ job.status }}">{{ STATUS_LABEL.get(job.status, job.status) }}</span>{% endif %}
+        {% if job.confidence == 'ok' %}<span class="tag tag--ok" title="resume changed and covers the JD's known skills">tailored</span>
+        {% elif job.confidence == 'review' %}<span class="tag tag--warn" title="JD skills missing from the resume — read this one">check CV</span>
+        {% elif job.confidence == 'unchanged' %}<span class="tag tag--warn" title="resume is basically the master — read this one">CV unchanged</span>{% endif %}
+        {% if mode == "archive" %}<span class="tag">applied {{ job.date_applied.strftime('%-d %b') if job.date_applied else '?' }}</span>{% endif %}
+        {% if mode == "filtered" %}<span class="tag">{{ job.date_scraped.strftime('%-d %b') if job.date_scraped else '?' }}</span>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% if mode == "mini" and job.status == "review_needed" %}<span class="tag tag--warn job__side">review</span>{% endif %}
+  </div>
+
+  {% if mode == "filtered" %}
+    {% if job.top_gaps %}<p class="job__gaps"><b>Gaps</b> {{ job.top_gaps | join(' · ') }}</p>{% endif %}
+  {% elif mode != "mini" %}
+  <div class="job__acts">
+    {% if mode == "active" %}
+    <form method="post" action="/jobs/{{ job.id }}/applied" class="inline">
+      <label class="chk" title="mark applied → archive"><input type="checkbox" onchange="this.form.submit()"><span>Applied</span></label>
+    </form>
+    {% endif %}
+    {% if job.has_pdf %}<a class="act" href="/admin/pdf/{{ job.id }}" target="_blank">CV</a>{% endif %}
+    <button type="button" class="act cal-btn" data-job-id="{{ job.id }}">+ event</button>
+    {% if mode == "active" and (job.top_matches or job.top_gaps) %}<button type="button" class="act why-toggle" data-why="why-{{ job.id }}" aria-expanded="false">why?</button>{% endif %}
+    {% if mode == "archive" %}
+    <form method="post" action="/jobs/{{ job.id }}/unapply" class="inline"><button type="submit" class="act" title="move back to active">undo</button></form>
+    {% endif %}
+    {% if job.apply_url %}<a class="act act--go" href="{{ job.apply_url }}" target="_blank" rel="noopener">Apply &rarr;</a>{% endif %}
+  </div>
+  {% if mode == "active" and (job.top_matches or job.top_gaps) %}
+  <div class="why" id="why-{{ job.id }}" hidden>
+    {% if job.top_matches %}<div class="why__ok"><b>&#10003; Matches</b> {{ job.top_matches | join(' · ') }}</div>{% endif %}
+    {% if job.top_gaps %}<div class="why__gap"><b>&#9888; Gaps</b> {{ job.top_gaps | join(' · ') }}</div>{% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+</article>
+{%- endmacro %}
+
+{% macro cal_dialog(next_url) -%}
+<dialog id="cal-modal">
+  <form method="post" id="cal-form">
+    <input type="hidden" name="next_url" value="{{ next_url }}">
+    <h3>Add calendar event</h3>
+    <label>Type
+      <select name="event_type" required>
+        <option value="interview">Interview</option>
+        <option value="assessment">Assessment</option>
+        <option value="hr_call">HR Call</option>
+        <option value="deadline">Deadline</option>
+      </select>
+    </label>
+    <div class="row2">
+      <label>Date <input type="date" name="event_date" required></label>
+      <label>Time <input type="time" name="event_time" required></label>
+    </div>
+    <label>Notes <textarea name="notes" rows="3" placeholder="recruiter name, link, anything else"></textarea></label>
+    <div class="row">
+      <button type="submit" class="btn">Create</button>
+      <button type="button" class="btn btn--ghost" onclick="document.getElementById('cal-modal').close()">Cancel</button>
+    </div>
+  </form>
+</dialog>
+{%- endmacro %}

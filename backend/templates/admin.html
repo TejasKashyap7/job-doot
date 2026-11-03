@@ -1,19 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Admin — Job Hunter{% endblock %}
+{% set nav = "admin" %}
+{% from "_ui.html" import page_head with context %}
+{% block title %}Admin · job-doot{% endblock %}
 {% block body %}
-<header class="topbar">
-  <h1>Job Hunter</h1>
-  <nav>
-    <a href="/">Home</a>
-    <a href="/jobs">Active</a>
-    <a href="/archive">Archive</a>
-    <a href="/filtered">Filtered</a>
-    <a href="/insights">Insights</a>
-    <a href="/admin" class="active">Admin</a>
-    <span class="whoami">{{ current_user.username }}</span>
-    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
-  </nav>
-</header>
+{{ page_head("Admin", sub="Users, alerts and pipeline controls") }}
 
 <div class="admin-wrap">
 
@@ -53,7 +43,7 @@
         <h2>Users</h2>
         <span class="admin-card__hint">Operational status only — no one's Groq keys, Telegram token, or password are ever shown here.</span>
       </div>
-      <table class="admin-table">
+      <div class="tbl-wrap"><table class="admin-table">
         <thead>
           <tr>
             <th>User</th><th>Signed up</th><th>Telegram</th><th>Groq keys</th>
@@ -93,7 +83,7 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </section>
 
     {# ---------- System alerts ---------- #}
@@ -161,7 +151,7 @@
         <button type="submit" class="btn">Generate link</button>
       </form>
       {% if invites %}
-      <table class="admin-table">
+      <div class="tbl-wrap"><table class="admin-table">
         <thead><tr><th>For</th><th>Link</th><th>Status</th><th>Created</th><th></th></tr></thead>
         <tbody>
           {% for inv in invites %}
@@ -185,7 +175,7 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       {% else %}
       <p class="admin-empty">No invite links yet.</p>
       {% endif %}

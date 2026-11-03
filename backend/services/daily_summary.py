@@ -128,3 +128,34 @@ def summary_text(s: dict) -> str:
         f"Interviews in next 7 days: {s['interviews_7d']}",
         f"Scraper: {s['scraper']} | Applier: {s['applier']}",
     ] + ([f"Alerts: {'; '.join(s['alerts'])}"] if s["alerts"] else []))
+
+
+def history(db, days: int = 14) -> list[dict]:
+    """Per IST day for the last `days` days (oldest first): jobs fetched (shared pool) and
+    applications sent (applier.db). Feeds the 'health, last 14 days' strip on Today.
+    Spec: .claude/specs/dashboard/ui-redesign-night.md"""
+    today = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = today - timedelta(days=days - 1)
+    out = [{"date": start + timedelta(days=i), "fetched": 0, "applied": 0} for i in range(days)]
+    start_utc = start.astimezone(timezone.utc).replace(tzinfo=None)
+    for (ts,) in db.query(Job.date_scraped).filter(Job.date_scraped >= start_utc).all():
+        if ts:
+            i = (ts.replace(tzinfo=timezone.utc).astimezone(IST).date() - start.date()).days
+            if 0 <= i < days:
+                out[i]["fetched"] += 1
+    db_path = APPLIER_DIR / "applier.db"
+    if db_path.exists():
+        c = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5)
+        try:
+            if c.execute("SELECT 1 FROM sqlite_master WHERE name='attempts'").fetchone():
+                for (ts,) in c.execute("SELECT created_at FROM attempts WHERE status='applied' AND created_at >= ?",
+                                       (start.replace(tzinfo=None).isoformat(timespec="seconds"),)):
+                    try:
+                        i = (datetime.fromisoformat(ts).date() - start.date()).days
+                    except (TypeError, ValueError):
+                        continue
+                    if 0 <= i < days:
+                        out[i]["applied"] += 1
+        finally:
+            c.close()
+    return out

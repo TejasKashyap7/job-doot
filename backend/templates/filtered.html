@@ -1,60 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Filtered — Job Hunter{% endblock %}
+{% set nav = "jobs" %}
+{% from "_ui.html" import page_head, job_card with context %}
+{% block title %}Filtered · job-doot{% endblock %}
 {% block body %}
-<header class="topbar">
-  <h1>Job Hunter</h1>
-  <nav>
-    <a href="/">Home</a>
-    <a href="/jobs">Active</a>
-    <a href="/archive">Archive</a>
-    <a href="/filtered" class="active">Filtered ({{ counts.filtered }})</a>
-    <a href="/insights">Insights</a>
-    {% if current_user.is_admin %}<a href="/admin">Admin</a>{% endif %}
-    <span class="whoami">{{ current_user.username }}</span>
-    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
-  </nav>
-</header>
+{{ page_head("Filtered out", sub=(counts.filtered ~ " jobs scored below 6 · read-only")) }}
 
-<section class="stats">
-  <div class="stat">
-    <div class="label">Active</div>
-    <div class="value">{{ counts.active }}</div>
-  </div>
-  <div class="stat">
-    <div class="label">Filtered Out</div>
-    <div class="value accent">{{ counts.filtered }}</div>
-  </div>
-</section>
-
-<p class="muted">Jobs that scored below 6 — not worth applying to. Read-only.</p>
+<nav class="chips" aria-label="Job lists">
+  <a href="/jobs" class="chip">Active <b>{{ counts.active }}</b></a>
+  <a href="/jobs?review=1" class="chip">Needs review <b>{{ counts.needs_review }}</b></a>
+  <a href="/filtered" class="chip on">Filtered <b>{{ counts.filtered }}</b></a>
+  <a href="/archive" class="chip">Applied <b>{{ counts.archive }}</b></a>
+</nav>
 
 {% if jobs %}
-<table class="jobs">
-  <thead>
-    <tr>
-      <th>Scraped</th>
-      <th>Title</th>
-      <th>Company</th>
-      <th>Location</th>
-      <th>Score</th>
-      <th>Skill gaps</th>
-      <th>Link</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for job in jobs %}
-    <tr>
-      <td>{{ job.date_scraped.strftime('%Y-%m-%d') if job.date_scraped else '?' }}</td>
-      <td class="title-cell">{{ job.title }}</td>
-      <td class="company-cell">{{ job.company }}</td>
-      <td>{{ job.location or '' }}</td>
-      <td><span class="score score-{{ score_class(job.score) }}">{{ '%.1f' % (job.score or 0) }}</span></td>
-      <td class="muted">{{ job.top_gaps | join(', ') if job.top_gaps else '—' }}</td>
-      <td>{% if job.apply_url %}<a href="{{ job.apply_url }}" target="_blank" rel="noopener">link</a>{% else %}—{% endif %}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="list">
+  {% for job in jobs %}{{ job_card(job, "filtered") }}{% endfor %}
+</div>
 {% else %}
   <p class="empty">No filtered jobs yet.</p>
 {% endif %}

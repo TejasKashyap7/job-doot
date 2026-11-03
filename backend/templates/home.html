@@ -1,73 +1,116 @@
 {% extends "base.html" %}
-{% block title %}Home — Job Hunter{% endblock %}
+{% set nav = "today" %}
+{% from "_ui.html" import page_head, job_card with context %}
+{% block title %}Today · job-doot{% endblock %}
 {% block body %}
-<header class="topbar">
-  <h1>Job Hunter</h1>
-  <nav>
-    <a href="/" class="active">Home</a>
-    <a href="/jobs">Active</a>
-    <a href="/archive">Archive</a>
-    <a href="/filtered">Filtered ({{ counts.filtered }})</a>
-    <a href="/jobs?review=1">Needs review ({{ counts.needs_review }})</a>
-    <a href="/insights">Insights</a>
-    {% if current_user.is_admin %}<a href="/admin">Admin</a>{% endif %}
-    <span class="whoami">{{ current_user.username }}</span>
-    <form method="post" action="/logout"><button type="submit" class="link">Logout</button></form>
-  </nav>
-</header>
+{% set s = summary %}
+{% set hh, mm = s.updated.split(':') | map('int') | list %}
+{% set clock = '%d:%02d %s' | format(hh % 12 or 12, mm, 'AM' if hh < 12 else 'PM') %}
+{% set status_txt = {'green': 'All systems ok', 'yellow': 'Needs a look', 'red': 'Check now'}[s.status] %}
+{{ page_head("Today", sub=(history[-1].date.strftime('%a %-d %b') ~ ' · ' ~ clock),
+             right='<span class="pill pill--' ~ s.status ~ '"><i></i>' ~ status_txt ~ '</span>') }}
 
-<section class="stats">
-  <div class="stat">
-    <div class="label">Active</div>
-    <div class="value accent">{{ counts.active }}</div>
-  </div>
-  <div class="stat">
-    <div class="label">Awaiting Scoring</div>
-    <div class="value">{{ counts.pending }}</div>
-  </div>
-  <div class="stat">
-    <div class="label">Fetched This Month</div>
-    <div class="value success">{{ total_month }}</div>
-  </div>
-  <div class="stat">
-    <div class="label">Needs Review</div>
-    <div class="value warning">{{ counts.needs_review }}</div>
-  </div>
-</section>
+<div class="cols">
+  <div class="stack">
+    <section class="card">
+      <div class="hero">
+        <canvas class="rings" width="128" height="128"
+                data-rings='[[{{ s.applied }},12,"#ff4a4a"],[{{ s.fetched }},30,"#f2e4df"],[{{ s.needs_you }},5,"#ffb547"]]'
+                aria-label="{{ s.applied }} applied, {{ s.fetched }} fetched, {{ s.needs_you }} need you"></canvas>
+        <div class="hero__rows">
+          <div class="hrow"><span>Applied</span><b class="c-red">{{ s.applied }}<small>/12</small></b></div>
+          <div class="hrow"><span>Fetched</span><b class="c-sil">{{ s.fetched }}<small>/30</small></b></div>
+          <div class="hrow"><span>Need you</span><b class="c-amb">{{ s.needs_you }}</b></div>
+        </div>
+      </div>
+      <div class="hero__notes">
+        {% if s.applied %}<span class="note">Easy Apply {{ s.applied_easy }} &middot; company site {{ s.applied_company_site }}</span>{% endif %}
+        {% if s.scraper != 'healthy' %}<span class="note note--warn">&#9679; Scraper: {{ s.scraper }}</span>{% endif %}
+        {% if s.applier != 'running' %}<span class="note note--warn">&#9679; Applier: {{ s.applier }}</span>{% endif %}
+        {% if s.open_questions %}<span class="note note--warn">&#9679; {{ s.open_questions }} form question{{ 's' if s.open_questions != 1 }} waiting for an answer</span>{% endif %}
+        {% if s.interviews_7d %}<span class="note note--ok">&#9679; {{ s.interviews_7d }} interview{{ 's' if s.interviews_7d != 1 }} in the next 7 days</span>{% endif %}
+        {% if s.failed %}<span class="note">{{ s.failed }} application{{ 's' if s.failed != 1 }} failed today</span>{% endif %}
+      </div>
+    </section>
 
-<section class="cal-wrap">
-  <div class="cal-header">
-    <a class="cal-nav" href="/?year={{ prev_year }}&month={{ prev_month }}" aria-label="previous month">&larr;</a>
-    <h2>{{ month_name }}</h2>
-    <a class="cal-nav" href="/?year={{ next_year }}&month={{ next_month }}" aria-label="next month">&rarr;</a>
-  </div>
-
-  <div class="cal-grid cal-grid-head">
-    {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
-      <div class="cal-dow">{{ d }}</div>
-    {% endfor %}
+    <section>
+      <div class="sec"><h2>Health, last 14 days</h2></div>
+      {% set days_with_jobs = history | selectattr('fetched') | list | length %}
+      {% set applied_14 = history | sum(attribute='applied') %}
+      <div class="card health">
+        <div class="health__row"><span>LinkedIn scraper</span><em>jobs on {{ days_with_jobs }} of 14 days</em></div>
+        <div class="bars">{% for d in history %}<span class="{{ 'ok' if d.fetched else 'bad' }}" title="{{ d.date.strftime('%-d %b') }}: {{ d.fetched }} fetched"></span>{% endfor %}</div>
+        <div class="health__row"><span>Applier</span><em>{{ applied_14 }} applied in 14 days</em></div>
+        <div class="bars">{% for d in history %}<span class="{{ 'ok' if d.applied else 'off' }}" title="{{ d.date.strftime('%-d %b') }}: {{ d.applied }} applied"></span>{% endfor %}</div>
+        <div class="axis"><span>{{ history[0].date.strftime('%-d %b') }}</span><span>today</span></div>
+      </div>
+    </section>
   </div>
 
+  <div class="stack">
+    <section>
+      <div class="sec"><h2>Best matches</h2><a href="/jobs">All {{ counts.active }} &rsaquo;</a></div>
+      <div class="list">
+        {% for job in best %}{{ job_card(job, "mini") }}{% else %}<p class="empty">No scored jobs yet.</p>{% endfor %}
+      </div>
+    </section>
+
+    <section>
+      <div class="sec"><h2>Pipeline</h2>{% if current_user.is_admin %}<a href="/admin">Admin &rsaquo;</a>{% endif %}</div>
+      <div class="card pipe">
+        {% for src in sources %}
+        <div class="pipe__row"><span class="dot dot--{{ 'on' if src.state == 'active' else 'off' }}"></span><span>{{ src.name }}</span><em>{{ src.label }}</em></div>
+        {% endfor %}
+        <div class="pipe__row"><span class="dot dot--{{ 'on' if s.applier == 'running' else 'warn' }}"></span><span>Applier</span><em>{{ s.applier }}</em></div>
+        <div class="pipe__row"><span class="dot dot--{{ 'warn' if counts.pending else 'on' }}"></span><span>Scorer</span><em>{{ counts.pending }} waiting to be scored</em></div>
+        <div class="pipe__row"><span class="dot dot--{{ 'warn' if counts.needs_review else 'on' }}"></span><span>Tailored CVs to check</span><em><a href="/jobs?review=1">{{ counts.needs_review }}</a></em></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<section class="card cal">
+  <div class="cal__head">
+    <a class="cal__nav" href="/?year={{ prev_year }}&month={{ prev_month }}" aria-label="previous month">&lsaquo;</a>
+    <h2>{{ month_name }} <small>{{ total_month }} fetched</small></h2>
+    <a class="cal__nav" href="/?year={{ next_year }}&month={{ next_month }}" aria-label="next month">&rsaquo;</a>
+  </div>
+  <div class="cal__grid cal__dow">{% for d in ['M','T','W','T','F','S','S'] %}<span>{{ d }}</span>{% endfor %}</div>
   {% for week in weeks %}
-  <div class="cal-grid">
+  <div class="cal__grid">
     {% for day in week %}
-      {% if day == 0 %}
-        <div class="cal-day cal-day-empty"></div>
+      {% if day == 0 %}<span class="cal__day cal__day--empty"></span>
       {% else %}
         {% set n = counts_by_day.get(day, 0) %}
-        {% set intensity = (0.10 + 0.55 * n / max_day_count) if (n > 0 and max_day_count > 0) else 0 %}
-        <a class="cal-day{% if day == today %} cal-day-today{% endif %}{% if n > 0 %} cal-day-has{% endif %}"
-           style="{% if n > 0 %}background: rgba(124,92,255,{{ '%.2f' | format(intensity) }});{% endif %}"
+        {% set a = (0.18 + 0.7 * n / max_day_count) if (n > 0 and max_day_count > 0) else 0 %}
+        <a class="cal__day{% if day == today %} cal__day--today{% endif %}{% if n > 0 %} cal__day--has{% endif %}"
+           {% if n > 0 %}style="background: rgba(255,74,74,{{ '%.2f' | format(a) }})"{% endif %}
            href="/jobs?date={{ '%04d-%02d-%02d' | format(year, month, day) }}"
            title="{{ n }} job(s) fetched on {{ '%04d-%02d-%02d' | format(year, month, day) }}">
-          <span class="cal-day-num">{{ day }}</span>
-          {% if n > 0 %}<span class="cal-day-count">{{ n }}</span>{% endif %}
+          <span>{{ day }}</span>{% if n > 0 %}<b>{{ n }}</b>{% endif %}
         </a>
       {% endif %}
     {% endfor %}
   </div>
   {% endfor %}
-
-  <p class="muted cal-legend">Each day shows how many jobs the scraper fetched — click a day to see that day's active jobs. Darker = more jobs. This counts everything fetched (including filtered/rejected); the <a href="/jobs">Active</a> list only shows jobs worth reviewing.</p>
+  <p class="muted small">Jobs fetched per day (everything, including filtered). Tap a day to see its active jobs.</p>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Apple-Fitness style rings: [value, goal, colour] from outside in.
+document.querySelectorAll("canvas.rings").forEach((c) => {
+  const px = 128, k = window.devicePixelRatio || 1, R = JSON.parse(c.dataset.rings);
+  c.width = c.height = px * k; c.style.width = c.style.height = px + "px";
+  const g = c.getContext("2d"); g.scale(k, k); g.lineCap = "round";
+  const w = px * 0.125, step = w * 1.1, ctr = px / 2;
+  R.forEach(([v, goal, col], i) => {
+    const r = ctr - w / 2 - 1 - i * step, f = Math.min(v / goal, 0.9999);
+    g.lineWidth = w; g.globalAlpha = 0.28; g.strokeStyle = col;
+    g.beginPath(); g.arc(ctr, ctr, r, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1;
+    if (f > 0) { g.beginPath(); g.arc(ctr, ctr, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f); g.stroke(); }
+  });
+});
+</script>
 {% endblock %}

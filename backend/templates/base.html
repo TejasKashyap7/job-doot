@@ -2,28 +2,85 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>{% block title %}Job Hunter{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=5">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>{% block title %}job-doot{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css?v=6">
 </head>
 <body>
-  {# Operational alerts (scraper cookie, Ollama down, ...) are admin concerns —
-     don't surface them to other users or on the unauthenticated login page. #}
-  {% set sys_alerts = get_alerts() if (current_user is defined and current_user.is_admin) else {} %}
-  {% if sys_alerts %}
-  <div class="sysalert-bar">
-    {% for key, a in sys_alerts.items() %}
-    <div class="sysalert sysalert--{{ a.level }}">
-      <span class="sysalert__icon">&#9888;</span>
-      <div class="sysalert__text">
-        <strong>{{ a.message }}</strong>
-        {% if a.instructions %}<span class="sysalert__fix">{{ a.instructions }}</span>{% endif %}
-        {% if key == "linkedin_cookie_expired" %}<a class="sysalert__action" href="/admin/linkedin-cookie">Update cookie &rarr;</a>{% endif %}
-      </div>
-    </div>
+{# Look: .claude/specs/dashboard/ui-redesign-night.md ("A · Night rings") #}
+{% from "_ui.html" import icon %}
+{% set authed = current_user is defined and current_user %}
+{% set nav_items = [("today", "/", "Today"), ("jobs", "/jobs", "Jobs"), ("insights", "/insights", "Insights"), ("archive", "/archive", "Archive")] %}
+{% if authed and current_user.is_admin %}{% set nav_items = nav_items + [("admin", "/admin", "Admin")] %}{% endif %}
+
+{% if authed %}
+<div class="app">
+  <nav class="rail" aria-label="Main">
+    <a class="rail__logo" href="/">job-doot</a>
+    {% for key, href, label in nav_items %}
+    <a href="{{ href }}" class="{{ 'on' if nav == key else '' }}">{{ icon(key) }}<span>{{ label }}</span></a>
     {% endfor %}
-  </div>
-  {% endif %}
-  {% block body %}{% endblock %}
+    <div class="rail__foot">
+      <span class="rail__user"><span class="avatar">{{ current_user.username[0]|upper }}</span>{{ current_user.username }}</span>
+      <form method="post" action="/logout"><button type="submit" class="linkbtn">Sign out</button></form>
+    </div>
+  </nav>
+  <main class="main">
+{% else %}
+  <main class="main main--bare">
+{% endif %}
+
+    {# Operational alerts (scraper cookie, Ollama down, ...) are admin concerns —
+       don't surface them to other users or on the unauthenticated login page. #}
+    {% set sys_alerts = get_alerts() if (authed and current_user.is_admin) else {} %}
+    {% if sys_alerts %}
+    <div class="sysalerts">
+      {% for key, a in sys_alerts.items() %}
+      <div class="sysalert sysalert--{{ a.level }}">
+        <span class="sysalert__icon">&#9888;</span>
+        <div class="sysalert__text">
+          <strong>{{ a.message }}</strong>
+          {% if a.instructions %}<span class="sysalert__fix">{{ a.instructions }}</span>{% endif %}
+          {% if key == "linkedin_cookie_expired" %}<a class="sysalert__action" href="/admin/linkedin-cookie">Update cookie &rarr;</a>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% block body %}{% endblock %}
+  </main>
+
+{% if authed %}
+  <nav class="tabbar" aria-label="Main">
+    {% for key, href, label in nav_items %}
+    <a href="{{ href }}" class="{{ 'on' if nav == key else '' }}">{{ icon(key) }}<span>{{ label }}</span></a>
+    {% endfor %}
+  </nav>
+</div>
+{% endif %}
+
+<script>
+// Shared behaviour: "+ event" opens the calendar dialog, "why?" toggles the match/gap box.
+document.addEventListener("click", (e) => {
+  const cal = e.target.closest(".cal-btn");
+  if (cal) {
+    const modal = document.getElementById("cal-modal");
+    if (modal) {
+      document.getElementById("cal-form").action = `/jobs/${cal.dataset.jobId}/calendar`;
+      modal.showModal();
+    }
+  }
+  const why = e.target.closest(".why-toggle");
+  if (why) {
+    const box = document.getElementById(why.dataset.why);
+    if (box) { box.hidden = !box.hidden; why.setAttribute("aria-expanded", String(!box.hidden)); }
+  }
+});
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

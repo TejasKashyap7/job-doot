@@ -592,8 +592,23 @@ def home(request: Request, current_user: User = Depends(require_login), db: Sess
     prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
     next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
 
+    # "Today" (spec: .claude/specs/dashboard/ui-redesign-night.md) — all read-only.
+    from services.daily_summary import build_summary, history
+    best = (
+        db.query(JobUserState, Job)
+        .join(Job, JobUserState.job_id == Job.id)
+        .filter(JobUserState.user_id == current_user.id, JobUserState.status.in_(ACTIVE_STATUSES),
+                JobUserState.score.isnot(None))
+        .order_by(JobUserState.score.desc(), Job.date_scraped.desc())
+        .limit(5).all()
+    )
+
     return templates.TemplateResponse("home.html", {
         "request": request, "current_user": current_user,
+        "summary": build_summary(db),
+        "history": history(db, 14),
+        "best": _attach_pdf_flag(db, best, current_user.id),
+        "sources": _sources_status(),
         "counts": _counts(db, current_user.id),
         "year": year, "month": month,
         "month_name": month_start.strftime("%B %Y"),
