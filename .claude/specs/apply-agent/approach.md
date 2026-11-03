@@ -184,3 +184,23 @@ Nothing goes to Tejas's monitored office email. All alerts/digests/questions →
 - **Decision (Tejas):** Vishal now applies to ALL of Tejas's scored jobs with
   **score >= 5** (was 7), source `db`, daily schedule on, 2 per slot. Offsite-apply jobs
   are skipped (recorded `not_easy_apply`) until Phase 2; they should be revisited then.
+
+## Priority 2026-11-03 — never get stuck; apply on company sites too (decided: Tejas)
+"The whole point is that it must not get stuck." Order:
+1. **Scraper tags apply type** (this change). Guest jobPosting HTML is a reliable marker:
+   `public_jobs_apply-link-onsite` = Easy Apply, `apply-link-offsite` = company site
+   (verified on 2 known Easy Apply + 2 known offsite jobs). New column
+   `jobs.apply_type` ('easy' | 'offsite' | NULL = unknown/legacy); `easy_apply` set too.
+   Applier picks `easy` first, then unknown (old rows, checked by opening the page);
+   `offsite` is skipped until step 2 ships. The company URL is NOT in the guest page —
+   step 2 reaches it by clicking "Apply ↗" in the applicant's browser.
+2. **Company-site applier (Phase 2):** follow Apply ↗, detect the ATS, fill no-account
+   forms (Greenhouse, Lever, Ashby, SmartRecruiters, generic) from profile facts +
+   Q&A bank; Haiku writes a short honest cover note when asked; upload resume; submit.
+3. Account-required ATS (Workday etc.) later — needs the applicant's email to verify.
+
+**CAPTCHAs: not solved by the agent (hard boundary).** Most no-account ATS forms use
+invisible risk scoring that a real browser + human-like input passes without a challenge.
+If a visible CAPTCHA/challenge appears, the agent does NOT attempt it: it parks the job as
+`needs_human`, Telegrams Tejas the link, and moves straight on to the next job — so the
+run never stalls. Parked jobs are listed in the daily digest.
