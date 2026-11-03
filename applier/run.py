@@ -102,6 +102,11 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
                 return
             if status == "applied":
                 applied += 1
+            if status == "skipped" and detail.startswith("needs_human:"):
+                why, _, link = detail[len("needs_human:"):].partition(" | ")
+                notify.send(cfg, f"🙋 Needs you — apply by hand ({applicant})\n"
+                                 f"{job['title']} — {job['company']}\nWhy: {why.strip()}\n"
+                                 f"Link: {link.strip() or job['url']}")
             if status == "skipped" and detail.startswith("question:"):
                 notify.send(cfg, f"❓ {applicant} — new form question(s), job skipped until answered:\n"
                                  f"{detail[len('question:'):]}\n({job['title']} — {job['company']})")
