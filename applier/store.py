@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS qa_bank (
 """
 
 # Statuses (detail prefix) that mean "never try this job again".
-FINAL = ("applied", "already_applied", "not_easy_apply", "closed")
+FINAL = ("applied", "already_applied", "not_easy_apply", "closed", "needs_human")
 
 
 def now() -> str:
@@ -131,7 +131,7 @@ def day_summary(conn, applicant, hours=24) -> dict:
         "SELECT status, detail, title, company FROM attempts WHERE applicant=? AND created_at>=?",
         (applicant, since),
     ).fetchall()
-    out = {"applied": [], "skipped": 0, "failed": [], "paused": 0}
+    out = {"applied": [], "skipped": 0, "failed": [], "paused": 0, "needs_human": []}
     for r in rows:
         if r["status"] == "applied":
             out["applied"].append(f"{r['title']} — {r['company']}")
@@ -139,6 +139,8 @@ def day_summary(conn, applicant, hours=24) -> dict:
             out["failed"].append(f"{r['title']} — {r['company']}: {(r['detail'] or '')[:80]}")
         elif r["status"] == "skipped":
             out["skipped"] += 1
+            if (r["detail"] or "").startswith("needs_human:"):
+                out["needs_human"].append(f"{r['title']} — {r['company']}: {(r['detail'] or '')[12:200]}")
         else:
             out["paused"] += 1
     return out

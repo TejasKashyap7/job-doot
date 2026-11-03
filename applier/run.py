@@ -138,6 +138,9 @@ def send_digest(cfg):
     lines += [f"   – {a}" for a in s["applied"][:20]]
     lines.append(f"• Skipped: {s['skipped']} | Failed: {len(s['failed'])}")
     lines += [f"   – {f}" for f in s["failed"][:5]]
+    if s["needs_human"]:
+        lines.append(f"• Need you (CAPTCHA / account / no form) — apply by hand: {len(s['needs_human'])}")
+        lines += [f"   – {x}" for x in s["needs_human"][:15]]
     if q:
         lines.append(f"• Questions waiting for you: {len(q)}")
         lines += [f"   #{x['id']}: {x['question']}" for x in q[:10]]

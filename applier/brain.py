@@ -24,6 +24,12 @@ experience, skills, degrees, certifications or numbers. Honesty rules:
 - Optional fields you cannot answer: leave them out.
 - Checkbox fields: answer "yes" to tick or "no" to leave unticked (tick consent /
   terms-of-application boxes only if required).
+- Name fields: split the name from the facts (first / last). URLs (LinkedIn) only from the
+  facts; leave portfolio/GitHub/website out if the facts have none.
+- Cover letter / "why do you want to join" / "tell us about yourself" text fields: write
+  3-4 short, honest sentences from the facts and the job title/company. Never invent
+  experience, projects or skills; it is fine to say the applicant is early-career and keen
+  to learn.
 
 Reply with ONLY this JSON, nothing else:
 {{"answers": {{"<field id>": "<value>"}}, "unknown": ["<field id>"]}}

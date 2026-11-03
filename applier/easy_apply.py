@@ -99,9 +99,12 @@ EXTRACT_JS = r"""
     const f = { id, type, label: lab.slice(0, 300), required: isReq(el, null) || /\*/.test(lab) || /\*|required/i.test(ctxRaw) };
     if (type === 'checkbox') f.value = el.checked ? 'yes' : '';
     else if (type === 'select') {
-      f.options = [...el.options].map(o => clean(o.text)).filter(t => t && !/^select an option$/i.test(t));
+      // placeholders: "Select an option", "Select...", "Choose", "--", empty value, disabled first option
+      const isPh = o => !clean(o.text) || o.value === '' || (o.disabled && o.index === 0)
+        || /^(-+\s*)?(select|choose|please (select|choose)|pick)\b.*$|^-+$/i.test(clean(o.text));
+      f.options = [...el.options].filter(o => !isPh(o)).map(o => clean(o.text));
       const cur = el.options[el.selectedIndex];
-      f.value = cur && !/^select an option$/i.test(clean(cur.text)) ? clean(cur.text) : '';
+      f.value = cur && !isPh(cur) ? clean(cur.text) : '';
     } else f.value = el.value || '';
     if (el.getAttribute('role') === 'combobox' || el.getAttribute('aria-autocomplete')) f.typeahead = true;
     const holder = box || el.closest('div');
@@ -295,6 +298,9 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
         if btn:
             break
     if not btn:
+        if cfg.get("offsite"):
+            from .offsite import apply_offsite  # Phase 2: company-site applications
+            return apply_offsite(page, cfg, conn, job, human)
         return "skipped", "not_easy_apply", 0
     human.click(btn)
     pause(2, 4)
