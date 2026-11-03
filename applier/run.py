@@ -93,6 +93,13 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
                                  f"Job: {job['title']} — {job['company']}\n"
                                  "Nothing will be applied until the pause flag is cleared.")
                 return
+            if status == "skipped" and detail.startswith("quota:"):
+                log.info("Claude quota exhausted — ending slot; applying resumes after the reset")
+                if not (DATA / f"quota-notified-{datetime.now():%Y%m%d}").exists():
+                    (DATA / f"quota-notified-{datetime.now():%Y%m%d}").touch()
+                    notify.send(cfg, f"⏸️ Applier for {applicant}: Claude usage limit reached "
+                                     f"({detail[len('quota:'):]}). Skipping until it resets — no action needed.")
+                return
             if status == "applied":
                 applied += 1
             if status == "skipped" and detail.startswith("question:"):

@@ -45,6 +45,11 @@ class BrainError(Exception):
     pass
 
 
+class BrainQuota(BrainError):
+    """Claude subscription limit reached (HTTP 429 / weekly or 5-hour limit). Not the
+    job's fault: skip without counting a failure; applying resumes after the reset."""
+
+
 def _call(cfg, prompt: str, model: str) -> dict:
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_OAUTH_TOKEN"}
     with tempfile.TemporaryDirectory() as empty:  # nothing for it to read
@@ -53,6 +58,10 @@ def _call(cfg, prompt: str, model: str) -> dict:
             capture_output=True, text=True, timeout=180, cwd=empty, env=env,
         )
     if out.returncode != 0:
+        blob = (out.stdout or "") + (out.stderr or "")
+        if '"api_error_status":429' in blob or "hit your" in blob and "limit" in blob:
+            m = re.search(r'"result":"([^"]*limit[^"]*)"', blob)
+            raise BrainQuota(m.group(1) if m else "Claude usage limit reached")
         raise BrainError(f"claude exit {out.returncode}: {out.stderr[-300:] or out.stdout[-300:]}")
     try:
         result = json.loads(out.stdout).get("result", "")
@@ -98,6 +107,8 @@ def answer_fields(cfg, fields: list[dict], qa: list[dict], job: dict, errors: st
     for model in (cfg["models"]["primary"], cfg["models"]["retry"]):
         try:
             return _validate(_call(cfg, prompt, model), fields)
+        except BrainQuota:
+            raise  # same account for both models — retrying with Sonnet won't help
         except (BrainError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
             log.warning("brain (%s) failed: %s", model, exc)
             last = exc

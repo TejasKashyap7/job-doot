@@ -9,7 +9,7 @@ import re
 import time
 
 from . import safety, store
-from .brain import BrainError, answer_fields
+from .brain import BrainError, BrainQuota, answer_fields
 from .human import Human, pause
 
 log = logging.getLogger(__name__)
@@ -317,6 +317,9 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
         if todo:
             try:
                 res = answer_fields(cfg, todo, store.answered(conn, applicant), job, last_err)
+            except BrainQuota as exc:
+                _discard(page, human)
+                return "skipped", f"quota:{exc}"[:300], steps
             except BrainError as exc:
                 _snapshot(page, job["id"], "brain")
                 _discard(page, human)
