@@ -77,6 +77,15 @@ def heartbeat_job():
         db.close()
 
     li_ok = has_li_at() and "linkedin_cookie_expired" not in alerts_svc.get_alerts()
+    # "active" alone hid a 4-week silent outage (2026-10-07 → 11-03): show health, not liveness.
+    if "linkedin_spy_sick" in alerts_svc.get_alerts():
+        li_state = "🔴 sick — searches find 0 jobs (needs repair)"
+    elif not li_ok:
+        li_state = "🔴 paused"
+    elif collected == 0:
+        li_state = "🟡 running but collected 0 in 24h"
+    else:
+        li_state = "🟢 healthy"
     w = watcher_status()
     alerts = alerts_svc.get_alerts()
     alert_line = "; ".join(a["message"] for a in alerts.values()) if alerts else "none"
@@ -84,7 +93,7 @@ def heartbeat_job():
         "📊 job-doot daily heartbeat\n"
         f"• Collected (24h): {collected}\n"
         f"• Awaiting scoring: {pending} | Scored: {scored} | CVs ready: {ready}\n"
-        f"• LinkedIn scraper: {'🟢 active' if li_ok else '🔴 paused'}\n"
+        f"• LinkedIn scraper: {li_state}\n"
         f"• Gmail watcher: {'🟢 running' if w['state'] == 'running' else '🔴 ' + w['label']}\n"
         f"• Alerts: {alert_line}"
     )

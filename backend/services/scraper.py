@@ -309,33 +309,51 @@ def _seconds_until_active_window() -> float:
     return max(0.0, (target - now).total_seconds())
 
 
-def _linkedin_search(session: requests.Session, keyword: str) -> list[str]:
-    url = (
-        f"{LI_BASE}/jobs/search"
-        f"?keywords={requests.utils.quote(keyword)}&location=India&f_TPR=r86400&count=10"
-    )
-    try:
-        resp = session.get(url, allow_redirects=True, timeout=20)
-    except Exception as exc:
-        log.warning("LinkedIn search request failed: %s", exc)
-        return []
-
-    if "linkedin.com/login" in resp.url:
-        _is_expired(resp)
-        return []
-
-    # LinkedIn no longer puts job links in <a href> anchors — IDs now live in
-    # embedded JS/JSON blobs. Extract from raw HTML text instead (2026-06 markup).
+def _extract_job_urls(text: str) -> list[str]:
     seen: set[str] = set()
     urls: list[str] = []
-    for m in re.finditer(r"/jobs/view/(\d+)", resp.text):
-        job_url = f"{LI_BASE}/jobs/view/{m.group(1)}/"
+    for m in re.finditer(r"jobPosting:(\d{8,})|/jobs/view/(?:[^\"'?#\s]*?-)?(\d{8,})", text):
+        job_url = f"{LI_BASE}/jobs/view/{m.group(1) or m.group(2)}/"
         if job_url not in seen:
             seen.add(job_url)
             urls.append(job_url)
             if len(urls) >= LI_JOBS_PER_SEARCH:
                 break
     return urls
+
+
+def _linkedin_search(session: requests.Session, keyword: str) -> list[str]:
+    """Job URLs for one keyword (India, past 24h).
+
+    2026-11: LinkedIn's redesigned search page (/jobs/search-results/) no longer puts
+    job ids in the HTML, which silently zeroed this spy from 2026-10-07. The guest
+    search endpoint still returns job cards with ids, so it's the primary source; the
+    logged-in page regex stays as a fallback.
+    """
+    q = requests.utils.quote(keyword)
+    guest = (f"{LI_BASE}/jobs-guest/jobs/api/seeMoreJobPostings/search"
+             f"?keywords={q}&location=India&f_TPR=r86400&start=0")
+    try:
+        resp = session.get(guest, timeout=20)
+        if resp.status_code == 200:
+            urls = _extract_job_urls(resp.text)
+            if urls:
+                return urls
+        else:
+            log.info("LinkedIn guest search HTTP %s — trying the page", resp.status_code)
+    except Exception as exc:
+        log.warning("LinkedIn guest search failed: %s — trying the page", exc)
+
+    url = f"{LI_BASE}/jobs/search?keywords={q}&location=India&f_TPR=r86400&count=10"
+    try:
+        resp = session.get(url, allow_redirects=True, timeout=20)
+    except Exception as exc:
+        log.warning("LinkedIn search request failed: %s", exc)
+        return []
+    if "linkedin.com/login" in resp.url:
+        _is_expired(resp)
+        return []
+    return _extract_job_urls(resp.text)
 
 
 def _linkedin_fetch_job(session: requests.Session, url: str) -> dict | None:
@@ -403,6 +421,31 @@ def _linkedin_fetch_job(session: requests.Session, url: str) -> dict | None:
     }
 
 
+# ---- Sensor v1 (M10): a spy that keeps returning nothing is "sick" ----
+SPY_SICK_AFTER = int(os.getenv("SPY_SICK_AFTER", "3"))
+_spy_empty_streak = 0
+
+
+def _spy_health(keyword: str, links: int, usable: int) -> None:
+    """Count consecutive searches that produced no usable job. After SPY_SICK_AFTER in a
+    row, raise linkedin_spy_sick (Telegram 🔴 once); the first good search clears it."""
+    global _spy_empty_streak
+    if usable > 0:
+        _spy_empty_streak = 0
+        alerts_svc.clear_alert("linkedin_spy_sick")
+        return
+    _spy_empty_streak += 1
+    log.warning("LinkedIn spy: search '%s' gave %d links / 0 usable jobs (%d in a row)",
+                keyword, links, _spy_empty_streak)
+    if _spy_empty_streak >= SPY_SICK_AFTER:
+        where = "search found no job links" if links == 0 else "job pages could not be read"
+        alerts_svc.set_alert(
+            "linkedin_spy_sick", "error",
+            f"LinkedIn spy is sick: {_spy_empty_streak} searches in a row produced 0 jobs ({where}).",
+            "LinkedIn probably changed its pages. Needs a repair — open Claude Code on the job-doot repo.",
+        )
+
+
 def linkedin_drip_loop(db_factory) -> None:
     """Runs forever as a daemon thread. Fetches one LinkedIn keyword every 15–45 min."""
     while True:  # OUTER: restart on any crash
@@ -440,6 +483,8 @@ def linkedin_drip_loop(db_factory) -> None:
                 keyword = kw_queue.pop()
                 log.info("LinkedIn drip: searching '%s'", keyword)
                 urls = _linkedin_search(session, keyword)
+                log.info("LinkedIn drip: '%s' -> %d job links", keyword, len(urls))
+                usable = 0
 
                 for i, url in enumerate(urls):
                     # Human-like pause between opening job listings (turns the
@@ -452,6 +497,7 @@ def linkedin_drip_loop(db_factory) -> None:
                     job_dict = _linkedin_fetch_job(session, url)
                     if not job_dict:
                         continue
+                    usable += 1
 
                     alerts_svc.clear_alert("linkedin_cookie_expired")
 
@@ -468,6 +514,8 @@ def linkedin_drip_loop(db_factory) -> None:
                         log.exception("Drip: ingest failed for %s", url)
                     finally:
                         db.close()
+
+                _spy_health(keyword, len(urls), usable)
 
                 sleep_sec = _next_sleep()
                 log.info("LinkedIn drip: sleeping %.0f min before next search", sleep_sec / 60)
