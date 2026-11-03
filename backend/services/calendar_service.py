@@ -197,3 +197,19 @@ def create_event(scheduler, job: Job, event_type: str, event_dt_ist: datetime,
         return row
     finally:
         db.close()
+
+
+def create_summary_event(title: str, description: str, start_ist: datetime, minutes: int = 15) -> str:
+    """Daily job-doot summary on Tejas's personal calendar (spec: dashboard/phone-widget.md).
+    Popup reminder at start so the phone shows a notification."""
+    if start_ist.tzinfo is None:
+        start_ist = start_ist.replace(tzinfo=IST)
+    cal = build("calendar", "v3", credentials=_load_creds(), cache_discovery=False)
+    body = {
+        "summary": title,
+        "description": description,
+        "start": {"dateTime": start_ist.isoformat(), "timeZone": "Asia/Kolkata"},
+        "end": {"dateTime": (start_ist + timedelta(minutes=minutes)).isoformat(), "timeZone": "Asia/Kolkata"},
+        "reminders": {"useDefault": False, "overrides": [{"method": "popup", "minutes": 0}]},
+    }
+    return cal.events().insert(calendarId="primary", body=body).execute().get("id")

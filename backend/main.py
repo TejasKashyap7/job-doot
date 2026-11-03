@@ -94,6 +94,22 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/summary")
+def api_summary(request: Request, db: Session = Depends(get_db)):
+    """Today's numbers for the iPhone widget. Tailscale (100.64.0.0/10) + localhost only."""
+    import ipaddress
+    from services.daily_summary import build_summary
+    host = request.client.host if request.client else ""
+    try:
+        ip = ipaddress.ip_address(host)
+        allowed = ip.is_loopback or ip in ipaddress.ip_network("100.64.0.0/10")
+    except ValueError:
+        allowed = False
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Tailscale only")
+    return build_summary(db)
+
+
 @app.post("/webhook/jobs")
 def webhook_jobs(request: Request, payload: dict, db: Session = Depends(get_db)):
     secret = os.getenv("WEBHOOK_SECRET", "")

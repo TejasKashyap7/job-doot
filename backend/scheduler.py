@@ -1,4 +1,5 @@
 import os
+from zoneinfo import ZoneInfo
 import logging
 import threading
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -101,6 +102,23 @@ def heartbeat_job():
     log.info("Heartbeat sent (collected=%d pending=%d watcher=%s)", collected, pending, w["state"])
 
 
+def daily_summary_event_job():
+    """09:30 IST: yesterday's numbers as a calendar event on Tejas's personal calendar."""
+    from services.daily_summary import build_summary, summary_text
+    from services.calendar_service import create_summary_event
+    db = SessionLocal()
+    try:
+        s = build_summary(db, days_ago=1)
+    finally:
+        db.close()
+    title = s["line"].replace("📊 ", "📊 Yesterday: ", 1)
+    try:
+        eid = create_summary_event(title, summary_text(s), datetime.now(ZoneInfo(TZ)).replace(second=0, microsecond=0))
+        log.info("Daily summary event created: %s (%s)", title, eid)
+    except Exception:
+        log.exception("Daily summary calendar event failed")
+
+
 def _reschedule_activity_job():
     """Daily 00:01 tick: schedule that day's LinkedIn activity jobs. Defined at module
     level (not a lambda) so the persistent jobstore can serialize it; reaches the live
@@ -136,6 +154,14 @@ def start_scheduler() -> BackgroundScheduler:
         id="heartbeat",
         replace_existing=True,
     )
+    if os.getenv("DAILY_SUMMARY_EVENT", "1") != "0":
+        sched.add_job(
+            daily_summary_event_job,
+            trigger=CronTrigger(hour=int(os.getenv("SUMMARY_EVENT_HOUR", "9")),
+                                minute=int(os.getenv("SUMMARY_EVENT_MINUTE", "30")), timezone=TZ),
+            id="daily_summary_event",
+            replace_existing=True,
+        )
     sched.start()
     log.info("Scheduler started — daily_scrape at %02d:%02d %s", HOUR, MINUTE, TZ)
 
