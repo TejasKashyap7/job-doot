@@ -70,6 +70,13 @@ function drawRings(d, size) {
   return ctx.getImage()
 }
 
+// "17:36" -> "5:36 PM"
+function clock12(hhmm) {
+  const [h, m] = String(hhmm).split(":").map(Number)
+  if (isNaN(h)) return String(hhmm)
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`
+}
+
 function legend(stack, label, value, color, size) {
   const row = stack.addStack()
   row.centerAlignContent()
@@ -92,10 +99,6 @@ w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000)
 const small = config.widgetFamily === "small"
 
 if (!d) {
-  const t = w.addText("job-doot")
-  t.font = Font.boldSystemFont(15)
-  t.textColor = Color.white()
-  w.addSpacer(6)
   const n = w.addText("offline - Tailscale off or Pi down")
   n.font = Font.systemFont(11)
   n.textColor = new Color(STATUS.offline)
@@ -103,9 +106,6 @@ if (!d) {
   const statusColor = new Color(STATUS[d.status] || STATUS.offline)
   const head = w.addStack()
   head.centerAlignContent()
-  const title = head.addText("job-doot")
-  title.font = Font.boldSystemFont(small ? 13 : 14)
-  title.textColor = Color.white()
   head.addSpacer()
   const st = head.addText(d.status === "green" ? "\u25CF ok" : d.status === "red" ? "\u25CF CHECK" : "\u25CF look")
   st.font = Font.boldSystemFont(small ? 11 : 12)
@@ -143,7 +143,7 @@ if (!d) {
     sub.lineLimit = 2
   }
   w.addSpacer()
-  const u = w.addText(`updated ${d.updated}`)
+  const u = w.addText(clock12(d.updated))
   u.font = Font.systemFont(9)
   u.textColor = new Color("#ebebf5", 0.45)
 }
