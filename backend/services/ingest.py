@@ -50,6 +50,7 @@ def ingest_rows(db: Session, rows: Iterable[dict]) -> dict:
             salary=(row.get("salary") or "").strip() or None,
             remote_flag=remote,
             easy_apply=_coerce_bool(row.get("easy_apply", False)),
+            apply_type=row.get("apply_type") or None,
             apply_url=apply_url or None,
             raw_description=raw_description,
             source_hash=h,

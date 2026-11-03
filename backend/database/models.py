@@ -78,7 +78,9 @@ class Job(Base):
     location = Column(String)
     salary = Column(String)
     remote_flag = Column(Boolean, default=False)
-    easy_apply = Column(Boolean, default=False)  # Phase 2 hook
+    easy_apply = Column(Boolean, default=False)  # True only when apply_type == 'easy'
+    # 'easy' (LinkedIn Easy Apply) | 'offsite' (company site) | None = unknown (pre-2026-11-03 rows)
+    apply_type = Column(String)
     apply_url = Column(String)
     raw_description = Column(Text)
 

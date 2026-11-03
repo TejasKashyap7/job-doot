@@ -408,6 +408,15 @@ def _linkedin_fetch_job(session: requests.Session, url: str) -> dict | None:
 
     remote_flag = bool(re.search(r"\bremote\b", location + " " + description, re.I))
 
+    # Apply type from the guest page (verified 2026-11-03): Easy Apply jobs carry
+    # public_jobs_apply-link-onsite, company-site jobs apply-link-offsite.
+    if "apply-link-onsite" in resp.text:
+        apply_type = "easy"
+    elif "apply-link-offsite" in resp.text:
+        apply_type = "offsite"
+    else:
+        apply_type = None
+
     # Key must be raw_description — drip loop hashes using this key; ingest also resolves it first.
     return {
         "title": title,
