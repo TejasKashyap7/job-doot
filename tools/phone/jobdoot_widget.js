@@ -73,7 +73,7 @@ function drawRings(d, size) {
 function legend(stack, label, value, color, size) {
   const row = stack.addStack()
   row.centerAlignContent()
-  const dot = row.addText("● ")
+  const dot = row.addText("\u25CF ")
   dot.font = Font.systemFont(size - 2)
   dot.textColor = color
   const l = row.addText(label)
@@ -107,7 +107,7 @@ if (!d) {
   title.font = Font.boldSystemFont(small ? 13 : 14)
   title.textColor = Color.white()
   head.addSpacer()
-  const st = head.addText(d.status === "green" ? "● ok" : d.status === "red" ? "● CHECK" : "● look")
+  const st = head.addText(d.status === "green" ? "\u25CF ok" : d.status === "red" ? "\u25CF CHECK" : "\u25CF look")
   st.font = Font.boldSystemFont(small ? 11 : 12)
   st.textColor = statusColor
   w.addSpacer(6)
@@ -117,7 +117,7 @@ if (!d) {
     img.imageSize = new Size(84, 84)
     img.centerAlignImage()
     w.addSpacer(4)
-    const t = w.addText(`${d.applied} applied · ${d.needs_you} need you`)
+    const t = w.addText(`${d.applied} applied \u00B7 ${d.needs_you} need you`)
     t.font = Font.systemFont(10)
     t.textColor = new Color("#ebebf5", 0.8)
     t.centerAlignText()
@@ -136,7 +136,7 @@ if (!d) {
     legend(col, "Need you", d.needs_you, RING.needs_you, 13)
     col.addSpacer(6)
     const sub = col.addText(d.status === "green"
-      ? `easy ${d.applied_easy} · site ${d.applied_company_site} · interviews ${d.interviews_7d}`
+      ? `easy ${d.applied_easy} \u00B7 site ${d.applied_company_site} \u00B7 interviews ${d.interviews_7d}`
       : (d.scraper !== "healthy" ? `Scraper: ${d.scraper}` : `Applier: ${d.applier}`))
     sub.font = Font.systemFont(10)
     sub.textColor = d.status === "green" ? new Color("#ebebf5", 0.6) : statusColor
