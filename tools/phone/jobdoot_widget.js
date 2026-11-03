@@ -5,7 +5,7 @@
 // Setup (2 min): Scriptable → + → paste this file → name it "job-doot" → long-press the
 // home screen → + → Scriptable → Small or Medium → Edit widget → Script: job-doot.
 
-const URL = "http://100.66.138.76:8080/api/summary"   // Pi's Tailscale address
+const URL = "http://100.66.138.76:8080/api/summary?key=PASTE_KEY_HERE"   // Pi's Tailscale address + widget key
 const COLORS = { green: "#2e7d32", yellow: "#f9a825", red: "#c62828", offline: "#616161" }
 
 async function load() {

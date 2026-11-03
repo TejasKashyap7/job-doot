@@ -96,17 +96,13 @@ def health():
 
 @app.get("/api/summary")
 def api_summary(request: Request, db: Session = Depends(get_db)):
-    """Today's numbers for the iPhone widget. Tailscale (100.64.0.0/10) + localhost only."""
-    import ipaddress
+    """Today's numbers for the iPhone widget. Needs ?key=<WIDGET_KEY> (set in .env).
+    Docker's port proxy hides the caller IP (everything arrives as the bridge gateway),
+    so access is by key, not by Tailscale address."""
     from services.daily_summary import build_summary
-    host = request.client.host if request.client else ""
-    try:
-        ip = ipaddress.ip_address(host)
-        allowed = ip.is_loopback or ip in ipaddress.ip_network("100.64.0.0/10")
-    except ValueError:
-        allowed = False
-    if not allowed:
-        raise HTTPException(status_code=403, detail="Tailscale only")
+    expected = os.getenv("WIDGET_KEY", "")
+    if not expected or not secrets.compare_digest(request.query_params.get("key", ""), expected):
+        raise HTTPException(status_code=403, detail="key required")
     return build_summary(db)
 
 

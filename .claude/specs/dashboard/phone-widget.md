@@ -8,8 +8,9 @@ JSON for today (IST): jobs fetched, jobs scored (user 1), applied today (Easy Ap
 company site), parked "needs you", failed, open form questions, upcoming interviews
 (7 days), scraper health (healthy / collected-0 / sick / paused), applier health
 (running / paused + reason / quiet >26h), overall status green|yellow|red + a one-line text.
-Access: Tailscale clients (100.64.0.0/10) and localhost only — no login needed for the
-widget, not reachable by other devices on the home wifi. Read-only.
+Access: `?key=<WIDGET_KEY>` (random, in the Pi's .env). Originally Tailscale-IP-only, but
+Docker's port proxy makes every caller appear as the bridge gateway (172.18.0.1), so IP
+checks can't tell Tailscale from home wifi — key instead (2026-11-03). Read-only counts.
 Applier numbers come from `data/applier/applier.db` (+ PAUSED flag), read-only.
 
 ## iPhone widget (Scriptable, free)
