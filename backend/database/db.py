@@ -50,6 +50,9 @@ def _ensure_columns():
     """Lightweight idempotent migration: add columns that create_all won't add to
     a table that already exists. SQLite ADD COLUMN is safe and non-locking."""
     wanted = {
+        "jobs": {
+            "apply_type": "VARCHAR",
+        },
         "resumes": {
             "similarity_to_master": "FLOAT",
             "jd_skill_coverage": "FLOAT",
