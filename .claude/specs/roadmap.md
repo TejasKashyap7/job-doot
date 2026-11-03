@@ -362,3 +362,15 @@ _Extra (not in original plan): auto-deploy pipeline + self-service LinkedIn cook
 ---
 
 _Last updated: 2026-07-06_
+
+### Incident 2026-11-03 — LinkedIn spy silently dead since 2026-10-07
+LinkedIn's search redesign (`/jobs/search` → `/jobs/search-results/`) removed job ids
+from the page HTML; `_linkedin_search` found 0 ids every time for ~4 weeks while the
+heartbeat still showed "🟢 active". Decided (Tejas): "if returned jobs are 0, the spy is
+sick and needs the duo" — build the sensor now, repair now by hand, auto-repair later.
+| Task | Status |
+|------|--------|
+| Search via guest endpoint `jobs-guest/jobs/api/seeMoreJobPostings/search` (verified 10 ids), old page regex as fallback | ✅ 2026-11-03 |
+| **Sensor v1 (M10):** 3 consecutive searches yielding 0 usable jobs → alert `linkedin_spy_sick` (Telegram 🔴) ; heartbeat shows 🔴 sick; clears itself on first good search | ✅ 2026-11-03 |
+| Hook sensor to the repairer (Claude Code headless, Duo fallback) so a sick alert triggers an automatic repair attempt | ❌ |
+| Naukri: now 400 Bad Request on every search (API changed) — repair or retire; silence its daily 0-jobs alert meanwhile | ❌ |
