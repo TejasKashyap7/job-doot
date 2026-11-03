@@ -204,3 +204,24 @@ invisible risk scoring that a real browser + human-like input passes without a c
 If a visible CAPTCHA/challenge appears, the agent does NOT attempt it: it parks the job as
 `needs_human`, Telegrams Tejas the link, and moves straight on to the next job — so the
 run never stalls. Parked jobs are listed in the daily digest.
+
+### Phase 2 design (2026-11-03, building)
+- Module `applier/offsite.py`. Entry: on the LinkedIn job page, when there is no Easy Apply
+  button but an offsite "Apply" button, and profile `offsite: true`. Click it (human-like),
+  catch the new tab (or same-tab navigation), dismiss LinkedIn's "share profile?" step.
+- ATS detection by URL: greenhouse, lever, ashbyhq, smartrecruiters, workable, recruitee,
+  breezy, keka, darwinbox, zoho → fill; myworkdayjobs/workday, taleo, icims, successfactors,
+  oraclecloud → `needs_human:account_required`; unknown → generic fill.
+- If the page shows a job description with an "Apply / Apply for this job" button but no
+  form, click it first. Same field extractor + brain + human fill as Easy Apply, run on the
+  form root. Resume via file input/chooser. Cover-letter / "why us" text fields: Haiku
+  writes 3–4 honest sentences from the facts + job title/company (no invented experience).
+- Stops (park, Telegram, move on — never stall): visible CAPTCHA (reCAPTCHA checkbox/
+  challenge frame, hCaptcha, Cloudflare Turnstile), password/sign-in/create-account forms,
+  no form found, email/OTP verification. Status `skipped` with detail `needs_human:<why>`
+  + company URL; these are final (not retried) and listed in the digest.
+- Success = confirmation text (thank you / application received / submitted). Validation
+  errors → one re-ask, then fail with a snapshot. LinkedIn safety checks don't run on
+  company sites (their own /login pages must not pause the whole applier).
+- Profile flags: `offsite: true` enables it; `include_offsite: true` lets the job query
+  return company-site jobs.
