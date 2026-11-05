@@ -127,6 +127,33 @@ def _human_reason(detail: str) -> tuple[str, str | None]:
     return text, (url if url and url.startswith("http") else None)
 
 
+_NEEDS_YOU = {
+    "account / sign-in required": "The company site asks you to sign in or create an account "
+        "before you can apply. The applier isn't allowed to create accounts yet, so it stopped "
+        "here and moved on to the next job.",
+    "account-based ATS": "This company uses an application system that needs an account "
+        "(Workday, SuccessFactors, Taleo…). The applier isn't allowed to create accounts yet.",
+    "payment page": "The site asked for card / payment details. The applier never pays for anything.",
+    "no application form found": "The applier couldn't find an application form on the company site.",
+}
+
+
+def _needs_you_text(detail: str) -> tuple[str, str | None]:
+    """'needs_human:<why> | <url>' -> (plain explanation, url)"""
+    why = detail.split(":", 1)[1] if ":" in detail else detail
+    url = None
+    if " | " in why:
+        why, url = why.rsplit(" | ", 1)
+    why = why.strip()
+    if why.startswith("captcha"):
+        text = (f"The site showed a CAPTCHA ({why[len('captcha'):].strip(' ()') or 'a robot check'}). "
+                "The applier never solves CAPTCHAs, so it left this one for you.")
+    else:
+        text = _NEEDS_YOU.get(why, why)
+    text += " Open the job and apply by hand if you want it."
+    return text, (url.strip() if url and url.strip().startswith("http") else None)
+
+
 def _state_path() -> Path:
     db_url = os.getenv("DATABASE_URL", "sqlite:///./data/jobs.db")
     return Path(db_url.split("///", 1)[-1]).parent / "notify_state.json"
@@ -191,9 +218,10 @@ def _watch_applier() -> None:
                        f"Couldn't apply: {_where(title, company)}", detail=f"What happened: {why}",
                        action_url=link or url)
             elif detail.startswith("needs_human:"):
+                text, link = _needs_you_text(detail)
                 notify(OWNER_USER_ID, "applier_needs_you", "warning",
                        f"Needs you: {_where(title, company)}",
-                       detail=detail.split(":", 1)[1].strip()[:400], action_url=url)
+                       detail=f"What happened: {text}", action_url=link or url)
 
     if paused and (first_run or not was_paused):
         reasons = [_human_reason(d)[0] for d, t, co in recent_fail]
