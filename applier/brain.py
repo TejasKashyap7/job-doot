@@ -1,6 +1,8 @@
-"""Form answering with headless Claude Code (Haiku first, Sonnet as one retry).
+"""Headless Claude Code brain (Haiku first, Sonnet as one retry).
 
-Clicking never goes through the LLM — this module only maps form fields to answers.
+next_actions(): Haiku looks at a page snapshot and decides what to click/type next
+(spec "Haiku drives the browser", 2026-11-05). answer_fields(): the older field-only
+mode, kept for driver: script.
 """
 import json
 import logging
@@ -56,13 +58,15 @@ class BrainQuota(BrainError):
     job's fault: skip without counting a failure; applying resumes after the reset."""
 
 
-def _call(cfg, prompt: str, model: str) -> dict:
+def _call(cfg, prompt: str, model: str, image: str | None = None) -> dict:
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_OAUTH_TOKEN"}
-    with tempfile.TemporaryDirectory() as empty:  # nothing for it to read
-        out = subprocess.run(
-            [cfg["claude_bin"], "-p", prompt, "--model", model, "--output-format", "json"],
-            capture_output=True, text=True, timeout=180, cwd=empty, env=env,
-        )
+    with tempfile.TemporaryDirectory() as empty:  # nothing for it to read (except the screenshot)
+        cmd = [cfg["claude_bin"], "-p", prompt, "--model", model, "--output-format", "json"]
+        if image:
+            import shutil
+            shutil.copy(image, os.path.join(empty, "page.png"))
+            cmd += ["--allowedTools", "Read"]
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=240, cwd=empty, env=env)
     if out.returncode != 0:
         blob = (out.stdout or "") + (out.stderr or "")
         if '"api_error_status":429' in blob or "hit your" in blob and "limit" in blob:
@@ -118,4 +122,155 @@ def answer_fields(cfg, fields: list[dict], qa: list[dict], job: dict, errors: st
         except (BrainError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
             log.warning("brain (%s) failed: %s", model, exc)
             last = exc
+    raise BrainError(str(last))
+
+
+
+# ---------------------------------------------------------------------------
+# Haiku drives the browser
+# ---------------------------------------------------------------------------
+
+AGENT_PROMPT = """You are applying for a job in a real web browser on behalf of ONE applicant,
+the way a careful person would: look at what is on the page, then act.
+
+GOAL: submit a job application for "{title}" at "{company}".
+{scope}
+
+HOW YOU SEE THE PAGE: a numbered list of everything clickable/typeable, each with its role,
+label, the question written near it, current value, options, and the page REGION it sits in
+(dialog / form / search / nav / header / footer / cookie-banner / page). Plus the page text.
+Elements in the "search" region are the site's JOB SEARCH bar — never fill them; they are not
+the application. A job DESCRIPTION page usually has an "Apply" / "Apply now" / "Easy Apply" /
+"I'm interested" button or link: click it to reach the form. Close or accept cookie banners
+and pop-ups that get in the way. If you need to see more of the page, scroll.
+
+HONESTY (hard rules):
+- Answer ONLY from the applicant facts and answered questions below. Never invent experience,
+  skills, degrees, certifications, numbers, links or employers.
+- Years of experience with a skill not in the facts = 0. "Do you have experience with X" where X
+  is not in the facts = No.
+- Select / radio answers must be one of that element's options, copied exactly.
+- A REQUIRED question you cannot answer truthfully from the facts/answers: do NOT guess — put it
+  in "unknown" and set status "ask_human".
+- Cover letter / "why do you want to join" boxes: 3-4 short honest sentences from the facts and
+  the job title/company; early-career and keen to learn is fine.
+- Tick consent / terms checkboxes only when required to apply. Never subscribe to newsletters.
+- Resume / CV upload: use action "upload_resume" on the file input or the upload button.
+- Never enter a password, create an account, pay, or solve a CAPTCHA: status "ask_human" with why.
+
+ACTIONS (do them in order; put ALL the fields of this page in one reply, then at most ONE
+click that moves on — Next / Continue / Review / Submit / Apply — as the LAST action):
+  {{"do":"click","n":N}}                      button, link, radio, option, tab, checkbox
+  {{"do":"type","n":N,"text":"..."}}          text boxes (replaces what is there)
+  {{"do":"select","n":N,"option":"..."}}      <select> dropdowns (role select) only
+  {{"do":"check","n":N,"on":true}}            checkbox on/off
+  {{"do":"upload_resume","n":N}}              file input or upload button
+  {{"do":"key","key":"Enter"|"Escape"|"Tab"}}
+  {{"do":"scroll","dir":"down"|"up"}}
+  {{"do":"back"}}                             browser back
+  {{"do":"wait"}}                             page still loading
+For a custom dropdown / typeahead (role combobox, button that opens a list): type or click it,
+then wait for the next page view to pick the option.
+
+STATUS:
+  "continue"   — you gave actions; show me the page again afterwards
+  "applied"    — the page CONFIRMS the application was sent / received / submitted (no actions)
+  "ask_human"  — a required answer is unknown, or a password/account/CAPTCHA/payment step
+  "give_up"    — this cannot be applied to (job closed, broken page, nothing works); say why
+  "need_screenshot" — the text list makes no sense and you need to see the page
+
+Reply with ONLY this JSON:
+{{"page":"<one line: what this page is>","actions":[...],"status":"continue",
+  "unknown":[{{"n":N,"question":"<the question as written>"}}],"why":"<reason, for non-continue>"}}
+
+APPLICANT FACTS:
+{facts}
+
+ANSWERED QUESTIONS (reuse for same-meaning questions):
+{qa}
+
+WHAT YOU DID SO FAR (most recent last):
+{history}
+{note}
+CURRENT PAGE
+url: {url}
+title: {page_title}
+errors shown: {errors}
+{screenshot}
+ELEMENTS:
+{elements}
+
+PAGE TEXT (trimmed):
+{text}
+"""
+
+ALLOWED = {"click", "type", "select", "check", "upload_resume", "key", "scroll", "back", "wait"}
+STATUSES = {"continue", "applied", "ask_human", "give_up", "need_screenshot"}
+
+
+def _validate_plan(data: dict, snap: dict) -> dict:
+    by_n = {e["n"]: e for e in snap["elements"]}
+    status = data.get("status")
+    if status not in STATUSES:
+        raise BrainError(f"bad status {status!r}")
+    actions = []
+    for a in data.get("actions") or []:
+        do = a.get("do")
+        if do not in ALLOWED:
+            raise BrainError(f"action not allowed: {a}")
+        if do in ("click", "type", "select", "check", "upload_resume"):
+            try:
+                a["n"] = int(a.get("n"))
+            except (TypeError, ValueError):
+                raise BrainError(f"action without element: {a}")
+            if a["n"] not in by_n:
+                raise BrainError(f"element [{a['n']}] does not exist")
+            el = by_n[a["n"]]
+            if el["role"] == "password":
+                raise BrainError("tried to touch a password field")
+            if el["region"] == "search" and do in ("type", "select"):
+                raise BrainError(f"tried to fill the site's search bar [{a['n']}]")
+            if do == "select":
+                opts = el.get("options") or []
+                val = str(a.get("option", ""))
+                match = next((o for o in opts if o == val), None) or \
+                    next((o for o in opts if o.strip().lower() == val.strip().lower()), None)
+                if not match:
+                    raise BrainError(f"option {val!r} not in [{a['n']}] options")
+                a["option"] = match
+            if do == "type":
+                a["text"] = str(a.get("text", ""))
+        if do == "key" and a.get("key") not in ("Enter", "Escape", "Tab"):
+            raise BrainError(f"key not allowed: {a}")
+        actions.append(a)
+    unknown = [u for u in (data.get("unknown") or []) if isinstance(u, dict) and u.get("question")]
+    if status == "continue" and not actions:
+        raise BrainError("status continue but no actions")
+    return {"page": str(data.get("page", ""))[:200], "actions": actions, "status": status,
+            "unknown": unknown, "why": str(data.get("why", ""))[:300]}
+
+
+def next_actions(cfg, snap: dict, rendered: str, job: dict, qa: list[dict], history: list[str],
+                 note: str = "", scope: str = "", image: str | None = None) -> dict:
+    qa_text = "\n".join(f"Q: {q['question']}\nA: {q['answer']}" for q in qa) or "(none yet)"
+    prompt = AGENT_PROMPT.format(
+        title=job.get("title"), company=job.get("company"), scope=scope,
+        facts=cfg["facts"].strip(), qa=qa_text,
+        history="\n".join(history[-8:]) or "(just opened the job page)",
+        note=f"\nNOTE FROM THE BROWSER: {note}\n" if note else "",
+        url=snap["url"][:300], page_title=snap["title"][:150],
+        errors="; ".join(snap["errors"])[:600] or "none",
+        screenshot="A SCREENSHOT of this page is in the file page.png — Read it.\n" if image else "",
+        elements=rendered, text=snap["text"],
+    )
+    last = None
+    for model in (cfg["models"]["primary"], cfg["models"]["retry"]):
+        try:
+            return _validate_plan(_call(cfg, prompt, model, image), snap)
+        except BrainQuota:
+            raise
+        except (BrainError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
+            log.warning("brain (%s) plan rejected: %s", model, exc)
+            last = exc
+            prompt += f"\n\nYOUR PREVIOUS REPLY WAS REJECTED: {exc}. Fix it and reply with JSON only.\n"
     raise BrainError(str(last))

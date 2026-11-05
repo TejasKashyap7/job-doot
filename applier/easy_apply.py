@@ -290,6 +290,11 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
         return "skipped", "already_applied", 0
 
     human.read_page()
+    if cfg.get("driver", "agent") == "agent":
+        # Haiku looks at the page and decides every click (spec 2026-11-05).
+        from .agent import run as agent_run
+        return agent_run(page, cfg, conn, job, human)
+
     btn = None
     for sel in ("button.jobs-apply-button:has-text('Easy Apply')",          # top card
                 "button[aria-label*='Easy Apply']",

@@ -118,7 +118,7 @@ prompt; output validated as JSON before use. Budget: one call per form step.
 **Model per task — cheapest that does the job** (decided 2026-11-01):
 | Task | Model |
 |---|---|
-| Clicking, scrolling, typing, timing | **no LLM** — plain script + ghost-cursor |
+| ~~Clicking, scrolling, typing, timing~~ | ~~no LLM — plain script + ghost-cursor~~ **SUPERSEDED 2026-11-05: Haiku decides what to click; ghost-cursor still does the moving/clicking/typing — see "Haiku drives the browser" below** |
 | Answering Easy Apply form fields, matching a question to the Q&A bank | **Haiku** (`--model haiku`) |
 | Retry when Haiku's JSON is invalid / it can't map a field it should know | **Sonnet**, once |
 | Technical work (repairing broken scrapers/applier code, M10 check-up) | Opus |
@@ -246,3 +246,96 @@ accounts. **Not Vishal's mail** — the agent never reads Vishal's inbox.
   application page so Tejas can apply by hand. Plus the 21:30 digest list.
 - Telegram reply to mark a parked job done (so it leaves the list) — to build.
 - Never to the monitored office mailbox.
+
+## Haiku drives the browser (decided 2026-11-05: Tejas — spec only, NOT built yet)
+
+**Why:** on 2026-11-04 three company sites (Advanced Energy, Applied Materials, MacDermid
+Alpha — same `jobs.<company>.com/job/...` careers platform) failed with
+`offsite_no_submit_button` and paused the applier for 1.5 days. Cause was the *script*,
+not the AI: its rule "≥ 2 input boxes = this is the form" took the site's job-search bar
+(Keyword + Location) for the application form, never clicked the orange "Apply now »"
+(a link, and the button finder only looks at buttons), and Haiku was asked to fill the
+search boxes. Tejas: *"We need Haiku to apply for jobs, not some random script — like you
+would with the Chrome extension: look at what is there and what is not, then apply."*
+
+**Decision:** Haiku decides every action on the page (where to click, what to type, when
+it's done). The script only (a) reads the page into a snapshot, (b) carries out Haiku's
+actions with the existing ghost-cursor/human typing in `human.py`, (c) enforces the hard
+safety rules. Applies to **both** LinkedIn Easy Apply and company sites (Tejas chose
+"both at once"). Replaces the field-extractor + `_primary()` button-guessing in
+`easy_apply.py` and `offsite.py`.
+
+### The loop (one Haiku call per page state)
+```
+open job page (LinkedIn) → human "reads" it (scroll 8–30 s, as today)
+repeat:
+  1. SNAPSHOT (script, no AI) — text, like the Chrome extension's read_page:
+       url, page title, any modal/dialog (incl. LinkedIn's shadow-root Easy Apply dialog),
+       visible main text (trimmed), visible error messages, cookie banner present?,
+       numbered list of every visible interactive element:
+         [n] role  "label/text"  (type, current value, options, required, which
+             region: header/search/nav/form/dialog/footer)
+  2. HAIKU — gets: goal ("submit an application for <title> at <company>"),
+       snapshot, applicant facts, Q&A bank, the last few actions + what changed,
+       last form errors. Returns ONLY JSON:
+         {"thinking": "<1 line: what page this is>",
+          "actions": [ {"do":"click","n":4}, {"do":"type","n":7,"text":"..."},
+                       {"do":"select","n":9,"option":"..."}, {"do":"check","n":12},
+                       {"do":"upload_resume","n":11}, {"do":"scroll","dir":"down"},
+                       {"do":"wait"} ],
+          "status": "continue" | "applied" | "ask_human" | "give_up",
+          "unknown": [ {"n":9,"question":"..."} ],   // required, not answerable truthfully
+          "why": "<reason for applied/ask_human/give_up>"}
+       A batch of actions per page (fill all fields, then one Next/Submit click) keeps it
+       to ~1 call per page, not per click.
+  3. VALIDATE (script) — every n exists and is visible; select/radio values copied from
+       that element's options; text only from facts/Q&A (same honesty rules as today's
+       PROMPT); no action outside the allow-list. Invalid → one Sonnet retry (as today).
+  4. ACT — ghost-cursor click / human typing / file chooser upload, think-time between.
+  5. CHECK — safety.check() (LinkedIn pages only), CAPTCHA detector, success text.
+until status ≠ continue
+```
+
+### No page limit (Tejas, 2026-11-05: "don't limit Haiku with 15 pages")
+No cap on pages/steps per application. The only stop is **stuck detection**: the same
+snapshot (url + element list + errors) after Haiku's actions **3 times in a row** = no
+progress → `failed: stuck_loop` with a screenshot. Every new page / changed form resets it.
+
+### Hard rules the script enforces (Haiku cannot override)
+- **Honesty:** same rules as the current form PROMPT. Unknown required answer →
+  `ask_human` → Q&A bank + Telegram + bell, job skipped (never guess).
+- **Stay on the job:** Haiku may navigate only within the job's LinkedIn page/dialog or
+  the company site reached via "Apply ↗" (same registrable domain + its ATS host). A click
+  that lands elsewhere → go back once; again → give_up.
+- **Never touched by the AI:** CAPTCHA (park `needs_human`, as today), password / create
+  account (park until Phase 3), LinkedIn checkpoint/authwall/restriction texts (pause
+  everything, as today), payment pages.
+- Cookie banners: Haiku may accept/close them (allowed action).
+- Resume upload only via the `upload_resume` action → script picks the profile's PDF.
+- "applied" is accepted only if the page also shows confirmation text (script regex) or
+  LinkedIn's "Application sent"; otherwise treated as `continue`.
+
+### Failure counting (changes the 3-strike pause)
+- `give_up` because the site is confusing / no form / stuck_loop → job **failed but does
+  NOT count** toward "3 failures in a row" (site problem, not an account-safety signal).
+  Shown under the bell with Haiku's `why` + screenshot path.
+- Only safety signals (checkpoint, restriction, captcha storms) and real errors (browser
+  crash, Claude errors other than quota) count toward the pause.
+
+### Cost (Claude subscription, shared with Tejas's own use)
+~1 Haiku call per page state ≈ 3–8 per application (today 1–3). Text snapshot, no
+screenshot by default (much cheaper); a screenshot is attached only on the retry after
+Haiku says it can't make sense of the page. Quota hit (429) → skip, not a failure (as
+today). Snapshot trimmed to ~6 k chars; elements outside the viewport listed but marked.
+
+### Build order
+1. `applier/snapshot.py` — page → numbered element list + text (shadow-root aware).
+2. `applier/brain.py` — `next_actions()` with the new PROMPT + validator (keep
+   `answer_fields` until both flows are switched).
+3. `applier/agent.py` — the loop, stuck detection, domain guard, success check.
+4. Switch offsite → agent; live-test on the 3 failed jobs (811/812/813) via `run once`.
+5. Switch Easy Apply → agent; live-test on a few Easy Apply jobs.
+6. Failure-counting change in `run.py`; delete old field-guessing code once both pass.
+
+### Open points
+- Wall-clock limit per job: **none** (Tejas, 2026-11-05: "no time limit"). Stuck detection is the only stop.

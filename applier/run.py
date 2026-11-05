@@ -6,6 +6,8 @@
   python -m applier.run qa     --profile vishal              # list unanswered questions
   python -m applier.run answer --profile vishal ID "text"    # answer one
   python -m applier.run resume                               # clear the pause flag
+  python -m applier.run look   --profile vishal --url URL    # Haiku's plan for a page, no actions
+  python -m applier.run try    --profile vishal --job ID     # apply to one job now (ignores pause)
 """
 import argparse
 import logging
@@ -110,6 +112,8 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
             if status == "skipped" and detail.startswith("question:"):
                 notify.send(cfg, f"❓ {applicant} — new form question(s), job skipped until answered:\n"
                                  f"{detail[len('question:'):]}\n({job['title']} — {job['company']})")
+            # Site problems (Haiku gave up / page stuck) don't count — only account-safety
+            # signals and real errors do (spec 2026-11-05).
             if store.recent_statuses(conn, applicant, 3) == ["failed"] * 3:
                 safety.pause("3 failures in a row")
                 notify.send(cfg, f"🛑 Applier paused for {applicant}: 3 failed applications in a row.")
@@ -177,9 +181,11 @@ def daemon(cfg):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["once", "daemon", "status", "qa", "answer", "resume"])
+    ap.add_argument("cmd", choices=["once", "daemon", "status", "qa", "answer", "resume", "look", "try"])
     ap.add_argument("--profile", default="vishal")
     ap.add_argument("--max", type=int)
+    ap.add_argument("--url")
+    ap.add_argument("--job", type=int)
     ap.add_argument("rest", nargs="*")
     a = ap.parse_args()
     setup_logging()
@@ -202,6 +208,46 @@ def main():
     elif a.cmd == "answer":
         store.answer(store.connect(), int(a.rest[0]), " ".join(a.rest[1:]))
         print("saved")
+    elif a.cmd == "look":
+        look(cfg, a.url)
+    elif a.cmd == "try":
+        try_job(cfg, a.job)
+
+
+def look(cfg, url: str) -> None:
+    """Dry run: open a page, show what Haiku sees and what it WOULD do. No clicks."""
+    from . import snapshot
+    from .brain import next_actions
+    with Session(cfg) as page:
+        page.goto(url, wait_until="domcontentloaded")
+        pause(4, 6)
+        snap = snapshot.take(page)
+        rendered = snapshot.render(snap)
+        print(rendered)
+        print("---- errors:", snap["errors"], "| dialog:", snap["dialog"])
+        plan = next_actions(cfg, snap, rendered, {"title": "(test)", "company": "(test)"},
+                            store.answered(store.connect(), cfg["name"]), [], scope=
+                            "You may follow the job's 'Apply' link to the company's own careers site.")
+        print("---- HAIKU PLAN:", plan)
+
+
+def try_job(cfg, job_id: int) -> None:
+    """Apply to one job right now (manual test; ignores the pause flag and exclusions)."""
+    jobs = {j["id"]: j for j in backend.candidate_jobs({**cfg, "min_score": 0, "include_offsite": True})}
+    job = jobs.get(job_id)
+    if not job:
+        print("job not found:", job_id)
+        return
+    conn = store.connect()
+    with Session(cfg) as page:
+        log.info("TRY job %s: %s — %s", job["id"], job["title"], job["company"])
+        try:
+            status, detail, steps = apply_to_job(page, cfg, conn, job)
+        except Exception as exc:
+            log.exception("Job %s crashed", job["id"])
+            status, detail, steps = "failed", f"crash:{type(exc).__name__}: {exc}"[:300], 0
+        log.info("Job %s -> %s (%s)", job["id"], status, detail)
+        store.log_attempt(conn, cfg["name"], job, status, detail, steps)
 
 
 if __name__ == "__main__":
