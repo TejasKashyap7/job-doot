@@ -99,8 +99,10 @@ once|daemon|status|qa|answer|resume`. Answer questions until `/qa` exists:
 ## Safety stops (auto-pause, no human needed to stay safe)
 Any of these → stop all applying, write a pause flag, Telegram alert, wait for Tejas:
 URL contains `/checkpoint` or `/authwall`; captcha/"unusual activity"/"restricted" text;
-logged out; 3 failures in a row; LinkedIn's own Easy Apply limit message. Resume = delete
+logged out; LinkedIn's own Easy Apply limit message. Resume = delete
 the pause flag (dashboard button later).
+**Only LinkedIn signals pause** (Tejas, 2026-11-05). Failed or "needs you" jobs never pause
+the applier — see "No failure-count pause" below.
 
 ## Human-like behaviour
 - Mouse: ghost-cursor paths between every target; occasional idle drift.
@@ -315,12 +317,23 @@ progress → `failed: stuck_loop` with a screenshot. Every new page / changed fo
 - "applied" is accepted only if the page also shows confirmation text (script regex) or
   LinkedIn's "Application sent"; otherwise treated as `continue`.
 
-### Failure counting (changes the 3-strike pause)
-- `give_up` because the site is confusing / no form / stuck_loop → job **failed but does
-  NOT count** toward "3 failures in a row" (site problem, not an account-safety signal).
-  Shown under the bell with Haiku's `why` + screenshot path.
-- Only safety signals (checkpoint, restriction, captcha storms) and real errors (browser
-  crash, Claude errors other than quota) count toward the pause.
+### No failure-count pause (Tejas, 2026-11-05 — replaces the 3-strike rule)
+- The old "3 failures in a row → pause" rule is **removed**. It paused on 5 Nov because it
+  skipped over "needs you" results and counted 3 old-script failures from 4 Nov.
+- A job that fails (site confusing, stuck, no form) or needs Tejas (sign-in, account,
+  CAPTCHA, payment) is logged + shown under the bell, and the applier **moves on to the
+  next job**. Tejas handles "Needs you" items when he is free.
+- The **only** pauses are LinkedIn account-safety signals (checkpoint/authwall/login,
+  "unusual activity", restriction, Easy Apply daily-limit text) — see Safety stops.
+- Browser crash: 2 crashes in one slot → end that slot (not a pause); the next slot
+  starts a fresh browser session.
+- Per slot: keep opening jobs until the slot's 1–2 applications are done, up to
+  **`max_views_per_slot`** job pages (default 12, was 5; Vishal's profile: 15), with random 20–60 s gaps between jobs and 2–6 min
+  after an application — so a run of sign-in sites no longer ends the slot with 0 applied.
+- Note: "account / sign-in required" stops only because the current profile is Vishal's
+  test account. On Tejas's own profile, Phase 3 (account creation with
+  tejas06012005@gmail.com + Gmail OTP) will handle these sites; until it is built they stay
+  "Needs you".
 
 ### Cost (Claude subscription, shared with Tejas's own use)
 ~1 Haiku call per page state ≈ 3–8 per application (today 1–3). Text snapshot, no

@@ -57,7 +57,7 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
     applicant = cfg["name"]
     excluded = store.excluded_job_ids(conn, applicant)
     target = max_apply or random.randint(1, cfg["max_per_slot"])
-    applied = views = 0
+    applied = views = crashes = 0
     with Session(cfg) as page:
         if cfg.get("source") == "linkedin_search":
             try:
@@ -112,12 +112,13 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
             if status == "skipped" and detail.startswith("question:"):
                 notify.send(cfg, f"❓ {applicant} — new form question(s), job skipped until answered:\n"
                                  f"{detail[len('question:'):]}\n({job['title']} — {job['company']})")
-            # Site problems (Haiku gave up / page stuck) don't count — only account-safety
-            # signals and real errors do (spec 2026-11-05).
-            if store.recent_statuses(conn, applicant, 3) == ["failed"] * 3:
-                safety.pause("3 failures in a row")
-                notify.send(cfg, f"🛑 Applier paused for {applicant}: 3 failed applications in a row.")
-                return
+            # Failed / needs-you jobs never pause — only LinkedIn safety signals do
+            # (status "paused" above). Spec: "No failure-count pause" (2026-11-05).
+            if detail.startswith("crash:"):
+                crashes += 1
+                if crashes >= 2:
+                    log.info("Browser crashed twice — ending this slot (not a pause)")
+                    break
             if applied < target and views < cfg["max_views_per_slot"]:
                 pause(120, 360) if status == "applied" else pause(20, 60)
     log.info("Slot done: %d applied, %d pages viewed", applied, views)

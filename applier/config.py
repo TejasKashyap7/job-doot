@@ -20,7 +20,7 @@ DEFAULTS = {
     "slots_per_day": [6, 8],      # random count per day
     "min_slot_gap_min": 45,
     "max_per_slot": 2,            # applications per slot (spec: 1-2)
-    "max_views_per_slot": 5,      # job pages opened per slot (non-Easy-Apply ones count)
+    "max_views_per_slot": 12,     # job pages opened per slot while looking for 1-2 to apply to
     "digest_time": "21:30",
     "claude_bin": "~/.local/bin/claude",
     "models": {"primary": "haiku", "retry": "sonnet"},

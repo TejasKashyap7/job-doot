@@ -117,16 +117,6 @@ def answer(conn, qa_id: int, text: str):
     conn.commit()
 
 
-def recent_statuses(conn, applicant, n=3) -> list[str]:
-    # "site:" failures (Haiku gave up on a confusing site / page stuck) are not counted.
-    rows = conn.execute(
-        "SELECT status FROM attempts WHERE applicant=? AND status IN ('applied','failed')"
-        " AND NOT (status='failed' AND detail LIKE 'site:%')"
-        " ORDER BY id DESC LIMIT ?", (applicant, n)
-    ).fetchall()
-    return [r["status"] for r in rows]
-
-
 def day_summary(conn, applicant, hours=24) -> dict:
     since = (datetime.now() - timedelta(hours=hours)).isoformat(timespec="seconds")
     rows = conn.execute(
