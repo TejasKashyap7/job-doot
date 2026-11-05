@@ -49,12 +49,20 @@ SNAP_JS = r"""
     }
     return '';
   };
+  // a real job-search bar is small: <= 3 fill-in fields and nothing an application form has
+  const smallSearchBox = c => {
+    const fields = [...c.querySelectorAll('input,select,textarea')].filter(i =>
+      !['hidden', 'submit', 'button', 'reset', 'image'].includes((i.type || '').toLowerCase()));
+    if (fields.length > 3) return false;
+    return !fields.some(i => i.tagName === 'TEXTAREA' || ['file', 'email', 'tel'].includes((i.type || '').toLowerCase()));
+  };
   const regionOf = el => {
     if (el.closest('[id*=cookie i],[class*=cookie i],[id*=onetrust i],[class*=onetrust i]')) return 'cookie-banner';
     if (el.closest('dialog,[role=dialog],[aria-modal=true]')) return 'dialog';
-    if (el.closest('[role=search],form[action*=search i],[class*=search i][class*=bar i]')) return 'search';
+    const sb = el.closest('[role=search],form[action*=search i],[class*=search i][class*=bar i]');
+    if (sb && smallSearchBox(sb)) return 'search';
     const f = el.closest('form');
-    if (f && [...f.querySelectorAll('input,button')].some(i => /^search/i.test(clean(i.innerText || i.value || i.getAttribute('aria-label'))) || i.type === 'search')) return 'search';
+    if (f && smallSearchBox(f) && [...f.querySelectorAll('input,button')].some(i => /^search/i.test(clean(i.innerText || i.value || i.getAttribute('aria-label'))) || i.type === 'search')) return 'search';
     if (el.closest('nav,[role=navigation]')) return 'nav';
     if (el.closest('header,[role=banner]')) return 'header';
     if (el.closest('footer,[role=contentinfo]')) return 'footer';

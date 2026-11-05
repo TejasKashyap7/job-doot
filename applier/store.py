@@ -4,6 +4,7 @@ Kept separate from data/jobs.db: that file is owned by root (the backend contain
 and the applier runs as the desktop user on the Pi host. Both live under ./data, so the
 dashboard container can still read this file later (/qa page).
 """
+import re
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -80,6 +81,21 @@ def excluded_job_ids(conn, applicant) -> set[int]:
         (applicant,),
     ).fetchall()
     out |= {r["job_id"] for r in waiting}
+    return out
+
+
+def job_key(title, company) -> str:
+    """Same title + company = the same job posted twice (spec: fixes 5 Nov, #3)."""
+    norm = lambda x: re.sub(r"[^a-z0-9]+", " ", (x or "").lower()).strip()
+    return norm(title) + "|" + norm(company)
+
+
+def tried_keys(conn, applicant, excluded: set[int]) -> dict[str, int]:
+    """title+company keys of jobs already done / needs-you / waiting -> their job id."""
+    out = {}
+    for r in conn.execute("SELECT job_id, title, company FROM attempts WHERE applicant=?", (applicant,)):
+        if r["job_id"] in excluded and r["title"]:
+            out.setdefault(job_key(r["title"], r["company"]), r["job_id"])
     return out
 
 

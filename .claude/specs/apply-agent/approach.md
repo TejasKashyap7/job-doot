@@ -335,6 +335,20 @@ progress → `failed: stuck_loop` with a screenshot. Every new page / changed fo
   tejas06012005@gmail.com + Gmail OTP) will handle these sites; until it is built they stay
   "Needs you".
 
+### Fixes from the 5 Nov evening slot (Tejas approved all 3, 2026-11-05)
+1. **Resume upload never asked.** The resume PDF is always available. The prompt tells Haiku
+   so (file name included) and the validator rejects an `ask_human` whose unknown item is a
+   file input or a "resume / CV" question — the retry is told to use `upload_resume` on it.
+   (Seen: UST ×2, HackerRank asked "Upload resume" as a question.)
+2. **"search" region only for real search bars.** A container counts as the site's job-search
+   bar only if it has at most 3 fill-in fields and no file / email / phone / textarea field.
+   A full application form is never "search", even if the site's markup says "search"
+   somewhere. (Seen: Truveta Greenhouse form — every field refused.)
+3. **Same job listed twice.** Before opening a job, skip it if a job with the same title +
+   company was already tried (finished, needs-you, or waiting on a question) or tried earlier
+   in this slot. Not logged as an attempt. (Seen: HP "Applied Research - Data Scientist" twice,
+   same Workday requisition.)
+
 ### Cost (Claude subscription, shared with Tejas's own use)
 ~1 Haiku call per page state ≈ 3–8 per application (today 1–3). Text snapshot, no
 screenshot by default (much cheaper); a screenshot is attached only on the retry after

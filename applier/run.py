@@ -74,9 +74,16 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
             return
         log.info("Slot: target %d application(s), %d candidate jobs (source=%s)",
                  target, len(jobs), cfg.get("source", "db"))
+        seen = store.tried_keys(conn, applicant, excluded)
         for job in jobs:
             if applied >= target or views >= cfg["max_views_per_slot"]:
                 break
+            key = store.job_key(job["title"], job["company"])
+            if job["title"] and seen.get(key, job["id"]) != job["id"]:
+                log.info("Job %s: same as job %s (%s — %s), skipping duplicate",
+                         job["id"], seen[key], job["title"], job["company"])
+                continue
+            seen[key] = job["id"]
             views += 1
             log.info("Job %s: %s — %s (score %s)", job["id"], job["title"], job["company"], job["score"])
             try:

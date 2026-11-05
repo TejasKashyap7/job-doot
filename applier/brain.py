@@ -160,7 +160,9 @@ HONESTY (hard rules):
 - Cover letter / "why do you want to join" boxes: 3-4 short honest sentences from the facts and
   the job title/company; early-career and keen to learn is fine.
 - Tick consent / terms checkboxes only when required to apply. Never subscribe to newsletters.
-- Resume / CV upload: use action "upload_resume" on the file input or the upload button.
+- Resume / CV upload: the applicant's resume file ({resume_name}) is ALWAYS available — use
+  action "upload_resume" on the file input or the upload / attach button. Never ask the human
+  for the resume and never put a resume / CV field in "unknown".
 - Never enter a password, create an account, pay, or solve a CAPTCHA: status "ask_human" with why.
 
 ACTIONS (do them in order; put ALL the fields of this page in one reply, then at most ONE
@@ -214,6 +216,7 @@ PAGE TEXT (trimmed):
 """
 
 ALLOWED = {"click", "type", "select", "check", "upload_resume", "key", "scroll", "back", "wait"}
+RESUME_Q = re.compile(r"\b(resume|résumé|cv|curriculum vitae)\b", re.I)
 STATUSES = {"continue", "applied", "ask_human", "give_up", "need_screenshot"}
 
 
@@ -253,6 +256,17 @@ def _validate_plan(data: dict, snap: dict) -> dict:
             raise BrainError(f"key not allowed: {a}")
         actions.append(a)
     unknown = [u for u in (data.get("unknown") or []) if isinstance(u, dict) and u.get("question")]
+    def _is_resume(u):
+        try:
+            el = by_n.get(int(u.get("n")))
+        except (TypeError, ValueError):
+            el = None
+        return (el is not None and el["role"] == "file") or bool(RESUME_Q.search(str(u["question"])))
+    real = [u for u in unknown if not _is_resume(u)]
+    if status == "ask_human" and unknown and not real:
+        raise BrainError("the resume file IS available — use upload_resume on the resume/CV field "
+                         "instead of asking the human")
+    unknown = real
     if status == "continue" and not actions:
         raise BrainError("status continue but no actions")
     return {"page": str(data.get("page", ""))[:200], "actions": actions, "status": status,
@@ -264,6 +278,7 @@ def next_actions(cfg, snap: dict, rendered: str, job: dict, qa: list[dict], hist
     qa_text = "\n".join(f"Q: {q['question']}\nA: {q['answer']}" for q in qa) or "(none yet)"
     prompt = AGENT_PROMPT.format(
         title=job.get("title"), company=job.get("company"), scope=scope,
+        resume_name=os.path.basename(str(cfg.get("resume_pdf") or "resume.pdf")),
         facts=cfg["facts"].strip(), qa=qa_text,
         history="\n".join(history[-8:]) or "(just opened the job page)",
         note=f"\nNOTE FROM THE BROWSER: {note}\n" if note else "",
