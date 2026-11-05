@@ -65,3 +65,43 @@ Accepted limitation (Flaw 6): whole-Pi / tunnel death → no ping goes out; Teja
 the silence. The `gmail-watcher` is a separate container — its liveness is a future add
 (watcher writes a last-seen timestamp the heartbeat reads). Add an external uptime monitor
 only if crashes become frequent.
+
+## Notification centre — bell on the dashboard (spec'd 2026-11-05, Tejas approved)
+
+**Why:** on 2026-11-04 the applier paused itself ("3 failures in a row": three company
+sites with no submit button) and stayed paused for a day+. The widget/Today card only showed
+"paused: 3 failures in a row" — no *which* jobs, *why*, *when*, or *how to resume*. Alerts in
+`data/alerts.json` are current-state only and vanish when cleared, so there's no history.
+
+**What:** a bell icon in the top bar of every page (phone + desktop) with an unread count.
+Tapping it opens `/notifications`: newest first, each row = level dot, title, detail, the
+"what to do" line, time ago, optional action link. Buttons: "Mark all read", "Clear all".
+Opening the page does NOT auto-mark read (you might just glance); "Mark all read" does.
+
+**Who sees what (Tejas chose "everyone, own events"):**
+- `user_id = NULL` → system events → shown to admins only (scraper, cookie, scoring, Ollama…)
+- `user_id = N` → that user's own events (today: applier events → owner `SUMMARY_USER_ID`,
+  because the applier only applies for the owner). Later per-user events plug in the same way.
+
+**Storage:** new table `notifications` (id, user_id NULL|FK, key, level
+error|warning|info|success, title, detail, action_url, created_at, read_at). Created by
+`create_all`, no migration. Keep last 200 per audience; older ones pruned on insert.
+
+**Sources (all backend-side; the applier on the Pi host is NOT modified):**
+1. `services/alerts.set_alert` (new alert only) → system notification, same level/message/
+   instructions. `clear_alert` → system "Resolved: …" (success) with the down-time.
+2. Applier watcher — scheduler job every 5 min reads the mounted `data/applier/`:
+   - new `attempts` rows with status `failed` → owner warning "Couldn't apply: <title> @
+     <company>" + human reason (e.g. `offsite_no_submit_button` → "company site had no submit
+     button") + the job URL as action link.
+   - new `needs_human:` rows → owner warning "Needs you: …".
+   - `PAUSED` file appears → owner error "Applier paused: <reason>" listing the last 3
+     failures; fix line: "On the Pi: cd ~/job-doot-applier && python -m applier.run resume".
+   - `PAUSED` disappears → owner success "Applier resumed".
+   Watermark (last seen attempt id + paused flag) in `data/notify_state.json`. First run
+   only records the watermark (no flood of old rows) — except an already-present PAUSED,
+   which is notified once.
+3. Telegram stays as-is (alerts already push there); the bell is the in-app history.
+
+**Not in scope:** auto-resuming the applier or changing its 3-strike rule (flaw decisions are
+Tejas's), web push, widget changes.

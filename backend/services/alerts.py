@@ -39,6 +39,9 @@ def set_alert(key: str, level: str, message: str, instructions: str = "") -> Non
     # Silent dashboard banners get missed for days — this is the actual fix
     # for that (see .claude/specs — recurring "why is there no data" incidents).
     if is_new:
+        import services.notifications as notif  # lazy — avoid import cycles
+        notif.notify(None, key, level, message, fix=instructions,
+                     action_url="/admin/linkedin-cookie" if key == "linkedin_cookie_expired" else None)
         import services.telegram as tg  # lazy import — avoid any import-cycle risk
         icon = {"error": "\U0001F534", "warning": "⚠️"}.get(level, "ℹ️")
         text = f"{icon} {message}"
@@ -52,7 +55,7 @@ def clear_alert(key: str) -> None:
     if key not in alerts:
         return
     since = alerts[key].get("since")
-    alerts.pop(key)
+    alerts_was = alerts.pop(key)
     _alerts_path().write_text(json.dumps(alerts, indent=2))
 
     import services.telegram as tg
@@ -64,3 +67,7 @@ def clear_alert(key: str) -> None:
         except ValueError:
             pass
     tg.send(f"✅ Resolved: {key}{duration}")
+
+    import services.notifications as notif
+    notif.notify(None, key, "success", f"Resolved: {alerts_was.get('message', key)}",
+                 detail=duration.strip(" ()").capitalize() if duration else "")

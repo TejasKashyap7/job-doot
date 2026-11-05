@@ -99,6 +99,27 @@
 
 {% block scripts %}
 <script>
+// Month arrows: swap just the calendar card in place (no full reload / jump to top).
+// The hrefs stay real links, so it still works if JS fails.
+document.addEventListener("click", async (e) => {
+  const nav = e.target.closest(".cal__nav");
+  if (!nav || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  const cal = nav.closest(".cal");
+  cal.style.opacity = "0.6";
+  try {
+    const res = await fetch(nav.href, { credentials: "same-origin" });
+    if (!res.ok || res.redirected) throw new Error(res.status);
+    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    const fresh = doc.querySelector("section.cal");
+    if (!fresh) throw new Error("no calendar");
+    cal.replaceWith(fresh);
+    history.replaceState(null, "", nav.href);
+  } catch (_) {
+    location.href = nav.href;
+  }
+});
+
 // Apple-Fitness style rings: [value, goal, colour] from outside in.
 document.querySelectorAll("canvas.rings").forEach((c) => {
   const px = 128, k = window.devicePixelRatio || 1, R = JSON.parse(c.dataset.rings);

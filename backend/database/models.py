@@ -179,3 +179,20 @@ class ApplicationAttempt(Base):
     attempted_at = Column(DateTime, default=datetime.utcnow)
     success = Column(Boolean, default=False)
     failure_reason = Column(String)
+
+
+# In-app notification centre (bell). user_id NULL = system event, shown to admins;
+# otherwise that user's own event. Spec: .claude/specs/notifications/approach.md
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
+    key = Column(String)                   # source, e.g. "applier_paused", "linkedin_cookie_expired"
+    level = Column(String, default="info")  # error | warning | info | success
+    title = Column(String, nullable=False)
+    detail = Column(Text)                  # what happened (multi-line ok)
+    fix = Column(Text)                     # what to do about it
+    action_url = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    read_at = Column(DateTime)

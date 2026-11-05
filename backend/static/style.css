@@ -28,7 +28,7 @@
 }
 
 * { box-sizing: border-box; min-width: 0; }
-html, body { margin: 0; background: var(--bg); color: var(--tx); overflow-x: hidden; }
+html, body { margin: 0; background: var(--bg); color: var(--tx); overflow-x: clip; }
 body { font: 15px/1.45 var(--f); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
 a { color: inherit; text-decoration: none; }
 a:hover { color: var(--tx); }
@@ -359,3 +359,24 @@ dialog h3 { margin: 0 0 4px; font-size: 18px; }
 .signup-wrap form label { flex-direction: row; flex-wrap: wrap; gap: 6px; margin-top: 6px; color: var(--tx); }
 .hint { color: var(--fa); font-weight: 500; }
 .err { color: var(--bad); font-size: 13.5px; margin: 4px 0 0; }
+
+/* ---------- notifications (bell + /notifications) ---------- */
+.bell { position: relative; width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: 50%; background: var(--s2); border: 1px solid var(--line); color: var(--mu); flex: none; }
+.bell svg { width: 18px; height: 18px; }
+.bell:hover, .bell--on { color: var(--tx); }
+.bell__n { position: absolute; top: -5px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--red); color: #120a0a; font: 800 11px/18px var(--f); text-align: center; border: 2px solid var(--bg); box-sizing: content-box; }
+.ntf-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.ntf-list { padding: 4px 16px; }
+.ntf { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+.ntf:first-child { border-top: 0; }
+.ntf__dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; background: var(--fa); }
+.ntf--error .ntf__dot { background: var(--bad); } .ntf--warning .ntf__dot { background: var(--amb); }
+.ntf--success .ntf__dot { background: var(--ok); } .ntf--info .ntf__dot { background: var(--sil); }
+.ntf__top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.ntf__title { font-size: 14.5px; font-weight: 700; color: var(--mu); overflow-wrap: anywhere; }
+.ntf--unread .ntf__title { color: var(--tx); }
+.ntf__time { color: var(--fa); font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
+.ntf__detail { margin: 4px 0 0; color: var(--mu); font-size: 13.5px; white-space: pre-line; overflow-wrap: anywhere; }
+.ntf__fix { margin: 6px 0 0; font-size: 13px; color: var(--amb); overflow-wrap: anywhere; }
+.ntf__fix b { font-weight: 700; }
+.ntf__link { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--red); }

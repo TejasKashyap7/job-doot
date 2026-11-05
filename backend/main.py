@@ -25,6 +25,7 @@ from services.auth import (
 )
 from services.profile_import import parse_profile_export, ProfileImportError
 import services.alerts as alerts_svc
+import services.notifications as notif_svc
 from services.scraper import save_li_at, has_li_at
 from services.watcher_health import watcher_status
 from agents.scorer import score_job_for_user, score_pending
@@ -58,6 +59,7 @@ IST = ZoneInfo("Asia/Kolkata")
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.globals["get_alerts"] = alerts_svc.get_alerts
+templates.env.globals["notif_unread"] = notif_svc.unread_count
 
 scheduler = None
 
@@ -563,6 +565,33 @@ def _counts(db: Session, user_id: int) -> dict:
 
 
 # ---------------- Dashboard pages ----------------
+
+@app.get("/notifications", response_class=HTMLResponse)
+def notifications_page(request: Request, current_user: User = Depends(require_login),
+                       db: Session = Depends(get_db)):
+    items = notif_svc.list_for(db, current_user)
+    now = datetime.utcnow()
+    for n in items:
+        mins = int((now - n.created_at).total_seconds() // 60)
+        n.ago = ("just now" if mins < 1 else f"{mins} min ago" if mins < 60
+                 else f"{mins // 60} h ago" if mins < 1440 else f"{mins // 1440} d ago")
+        n.local = n.created_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(IST).strftime("%a %-d %b, %-I:%M %p")
+    return templates.TemplateResponse("notifications.html", {
+        "request": request, "current_user": current_user, "items": items,
+    })
+
+
+@app.post("/notifications/read")
+def notifications_read(current_user: User = Depends(require_login), db: Session = Depends(get_db)):
+    notif_svc.mark_all_read(db, current_user)
+    return RedirectResponse("/notifications", status_code=303)
+
+
+@app.post("/notifications/clear")
+def notifications_clear(current_user: User = Depends(require_login), db: Session = Depends(get_db)):
+    notif_svc.clear_all(db, current_user)
+    return RedirectResponse("/notifications", status_code=303)
+
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, current_user: User = Depends(require_login), db: Session = Depends(get_db),

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% set nav = "notifications" %}
+{% from "_ui.html" import page_head with context %}
+{% block title %}Notifications · job-doot{% endblock %}
+{% block body %}
+{% set unread_n = items | selectattr('read_at', 'none') | list | length %}
+{{ page_head("Notifications", sub=(unread_n ~ " unread" if unread_n else "All caught up")) }}
+
+{% if items %}
+<div class="ntf-actions">
+  {% if unread_n %}<form method="post" action="/notifications/read"><button type="submit" class="btn btn--ghost btn--sm">Mark all read</button></form>{% endif %}
+  <form method="post" action="/notifications/clear"><button type="submit" class="btn btn--ghost btn--sm">Clear all</button></form>
+</div>
+<div class="ntf-list card">
+  {% for n in items %}
+  <article class="ntf ntf--{{ n.level }}{{ ' ntf--unread' if not n.read_at else '' }}">
+    <span class="ntf__dot" aria-hidden="true"></span>
+    <div class="ntf__body">
+      <div class="ntf__top">
+        <strong class="ntf__title">{{ n.title }}</strong>
+        <time class="ntf__time" title="{{ n.local }}">{{ n.ago }}</time>
+      </div>
+      {% if n.detail %}<p class="ntf__detail">{{ n.detail }}</p>{% endif %}
+      {% if n.fix %}<p class="ntf__fix"><b>What to do:</b> {{ n.fix }}</p>{% endif %}
+      {% if n.action_url %}<a class="ntf__link" href="{{ n.action_url }}"{% if n.action_url.startswith('http') %} target="_blank" rel="noopener"{% endif %}>{{ 'Update cookie' if n.action_url == '/admin/linkedin-cookie' else 'Open job' }} &rarr;</a>{% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+  <p class="empty">No notifications. Errors and other events will show up here.</p>
+{% endif %}
+{% endblock %}

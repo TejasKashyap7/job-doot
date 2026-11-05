@@ -16,6 +16,7 @@ from database.models import Job, JobUserState
 from services.telegram import send as tg_send
 from services.watcher_health import watcher_status
 import services.alerts as alerts_svc
+from services.notifications import watch_applier
 
 log = logging.getLogger(__name__)
 
@@ -162,6 +163,14 @@ def start_scheduler() -> BackgroundScheduler:
             id="daily_summary_event",
             replace_existing=True,
         )
+    # Bell: turn applier failures / pause flips into notifications (spec: notifications/approach.md)
+    sched.add_job(
+        watch_applier,
+        trigger=IntervalTrigger(minutes=5),
+        id="watch_applier",
+        replace_existing=True,
+        next_run_time=datetime.now(),
+    )
     sched.start()
     log.info("Scheduler started — daily_scrape at %02d:%02d %s", HOUR, MINUTE, TZ)
 
