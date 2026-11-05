@@ -92,6 +92,8 @@ _REASONS = {
     "too_many_steps": "the form had too many steps",
     "stuck": "the Easy Apply form didn't move to the next page",
     "brain": "the AI form-filler (Claude) errored",
+    "site": "Haiku gave up on this site (doesn't count toward the pause)",
+    "crash": "the applier crashed on this job",
 }
 
 
