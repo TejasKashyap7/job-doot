@@ -105,3 +105,15 @@ error|warning|info|success, title, detail, action_url, created_at, read_at). Cre
 
 **Not in scope:** auto-resuming the applier or changing its 3-strike rule (flaw decisions are
 Tejas's), web push, widget changes.
+
+### Plain-language "what happened" (Tejas, 2026-11-05)
+Every applier failure under the bell carries a simple explanation, written for a
+non-technical reader — not an error code.
+- **Old script failures** (`offsite_no_submit_button`, `offsite_stuck`, `stuck`,
+  `too_many_steps`, `no_primary_button`): say plainly that a fixed script (not the AI) was
+  choosing what to click, so Haiku never saw the whole page and could not react to what was
+  actually there — plus what the script got wrong on that kind of page.
+- **Haiku agent failures** (`site:` / `needs_human:` from the agent): Haiku's own `why`,
+  written in 1–3 simple sentences: what it saw, what it tried, why it stopped
+  (apply-agent spec). Shown in full, not cut to 160 chars.
+- The pause notification lists each of the last failures with that explanation.

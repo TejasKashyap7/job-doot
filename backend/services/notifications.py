@@ -86,30 +86,44 @@ def clear_all(db, user) -> None:
 # The applier runs on the Pi host (~/job-doot-applier) and is NOT modified; we read its
 # mounted data dir and turn new rows / pause-flag flips into notifications.
 
+_SCRIPT = ("A fixed script (not the AI) was deciding where to click. Haiku never saw the whole "
+           "page — it only got the boxes the script picked — so nothing could notice what was "
+           "really on the screen and react. ")
 _REASONS = {
-    "offsite_no_submit_button": "the company site had no submit button the bot could find",
-    "offsite_stuck": "the company-site form didn't accept the submission",
-    "too_many_steps": "the form had too many steps",
-    "stuck": "the Easy Apply form didn't move to the next page",
-    "brain": "the AI form-filler (Claude) errored",
-    "site": "Haiku gave up on this site (doesn't count toward the pause)",
-    "crash": "the applier crashed on this job",
+    "offsite_no_submit_button": _SCRIPT + "Here the script took the site's job-search bar for the "
+        "application form, never pressed the 'Apply' button to open the real form, and then "
+        "couldn't find a Submit button.",
+    "offsite_stuck": _SCRIPT + "The company form refused the answers (something required was "
+        "missing or in the wrong format) and the script could not see what the form wanted.",
+    "stuck": _SCRIPT + "The LinkedIn form would not go to the next page — some answer was "
+        "missing or not accepted — and the script couldn't tell which one.",
+    "too_many_steps": _SCRIPT + "The form kept going past the script's page limit, so it stopped.",
+    "no_primary_button": _SCRIPT + "It couldn't find the Next / Submit button in the form.",
+    "offsite_too_many_pages": _SCRIPT + "The company site kept going past the script's page limit.",
+    "brain": "Claude (the AI that answers the form questions) returned an error, so the "
+             "application was stopped.",
+    "site": "Haiku looked at the page and gave up. In its own words:",
+    "crash": "The applier program itself crashed on this job (a bug, not the website).",
+    "modal_missing": "The LinkedIn Easy Apply window didn't open.",
 }
 
 
 def _human_reason(detail: str) -> tuple[str, str | None]:
-    """'offsite_stuck:msg | url' -> ('the company-site form ... (msg)', url)"""
+    """'offsite_stuck:msg | url' -> (plain-language explanation, url)"""
     detail = detail or ""
     url = None
     if " | " in detail:
         detail, url = detail.rsplit(" | ", 1)
     code, _, extra = detail.partition(":")
-    text = _REASONS.get(code.strip(), code.strip() or "unknown error")
-    if extra.strip():
-        extra = extra.strip()
+    code, extra = code.strip(), extra.strip()
+    text = _REASONS.get(code, code or "unknown error")
+    if extra:
         if "weekly limit" in extra or "429" in extra:
-            extra = "Claude weekly quota hit"
-        text += f" ({extra[:160]})"
+            extra = "Claude's weekly usage limit was reached"
+        if code == "site":
+            text += f" \u201c{extra[:600]}\u201d"
+        elif code not in ("offsite_stuck", "stuck"):   # those raw messages add nothing
+            text += f" ({extra[:200]})"
     return text, (url if url and url.startswith("http") else None)
 
 
@@ -174,7 +188,7 @@ def _watch_applier() -> None:
             if st == "failed":
                 why, link = _human_reason(detail)
                 notify(OWNER_USER_ID, "applier_failed", "warning",
-                       f"Couldn't apply: {_where(title, company)}", detail=f"Why: {why}.",
+                       f"Couldn't apply: {_where(title, company)}", detail=f"What happened: {why}",
                        action_url=link or url)
             elif detail.startswith("needs_human:"):
                 notify(OWNER_USER_ID, "applier_needs_you", "warning",
@@ -182,7 +196,13 @@ def _watch_applier() -> None:
                        detail=detail.split(":", 1)[1].strip()[:400], action_url=url)
 
     if paused and (first_run or not was_paused):
-        lines = [f"• {_where(t, co)} — {_human_reason(d)[0]}" for d, t, co in recent_fail]
+        reasons = [_human_reason(d)[0] for d, t, co in recent_fail]
+        lines = [f"• {_where(t, co)}" for d, t, co in recent_fail]
+        # same explanation for every job? say it once
+        if reasons and len(set(reasons)) == 1:
+            lines.append(f"\nWhat happened: {reasons[0]}")
+        else:
+            lines = [f"{l} — {r}" for l, r in zip(lines, reasons)]
         notify(OWNER_USER_ID, "applier_paused", "error", f"Applier paused: {reason}",
                detail=("Last failures:\n" + "\n".join(lines)) if lines else "",
                fix="It won't apply to anything until resumed. On the Pi: "
