@@ -181,7 +181,11 @@ STATUS:
 
 Reply with ONLY this JSON:
 {{"page":"<one line: what this page is>","actions":[...],"status":"continue",
-  "unknown":[{{"n":N,"question":"<the question as written>"}}],"why":"<reason, for non-continue>"}}
+  "unknown":[{{"n":N,"question":"<the question as written>"}}],"why":"<for non-continue>"}}
+"why" is shown to the job seeker in a notification: write it in 1-3 SIMPLE sentences for a
+non-technical person — what you saw on the page, what you tried, and why you stopped.
+No codes, no element numbers. Example: "The company page only had a job-search box and a
+'Sign in' button; applying needs an account, which I'm not allowed to create."
 
 APPLICANT FACTS:
 {facts}
@@ -247,7 +251,7 @@ def _validate_plan(data: dict, snap: dict) -> dict:
     if status == "continue" and not actions:
         raise BrainError("status continue but no actions")
     return {"page": str(data.get("page", ""))[:200], "actions": actions, "status": status,
-            "unknown": unknown, "why": str(data.get("why", ""))[:300]}
+            "unknown": unknown, "why": str(data.get("why", ""))[:600]}
 
 
 def next_actions(cfg, snap: dict, rendered: str, job: dict, qa: list[dict], history: list[str],

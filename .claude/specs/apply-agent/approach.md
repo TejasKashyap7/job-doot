@@ -328,6 +328,12 @@ screenshot by default (much cheaper); a screenshot is attached only on the retry
 Haiku says it can't make sense of the page. Quota hit (429) → skip, not a failure (as
 today). Snapshot trimmed to ~6 k chars; elements outside the viewport listed but marked.
 
+### Plain-language reasons (Tejas, 2026-11-05)
+Haiku's `why` (give_up / ask_human) is written for a non-technical reader in 1–3 sentences:
+what it saw, what it tried, why it stopped. Stored in the attempt detail (`site:<why> | url`,
+up to 900 chars) and shown in full under the bell. Stuck / left-the-site stops get the same
+kind of sentence from the script.
+
 ### Build order
 1. `applier/snapshot.py` — page → numbered element list + text (shadow-root aware).
 2. `applier/brain.py` — `next_actions()` with the new PROMPT + validator (keep

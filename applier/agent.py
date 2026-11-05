@@ -272,7 +272,11 @@ class Agent:
                 stuck += 1
                 if stuck >= STUCK_LIMIT:
                     _shot(self.page, self.job["id"], "agent-stuck")
-                    return "failed", f"site:stuck — page did not change after {STUCK_LIMIT} tries | {self.page.url}"[:300], self.steps
+                    seen = self.history[-1].split("page: ", 1)[-1] if self.history else "the page"
+                    tried = "; ".join(h.strip("   ✓✗") for h in self.history[-4:] if h.strip().startswith(("✓", "✗")))[:250]
+                    why = (f"I kept trying but the page stayed exactly the same {STUCK_LIMIT} times in a row, so I "
+                           f"stopped. I was on: {seen[:120]}. Last things I did: {tried or 'nothing worked'}.")
+                    return "failed", f"site:{why} | {self.page.url}"[:900], self.steps
                 self.note = (f"The page did NOT change after your last actions ({stuck}x). "
                              "Something is missing or invalid, or you clicked the wrong thing. Try differently.")
             else:
@@ -316,7 +320,7 @@ class Agent:
                         _discard_linkedin(self.page, self.human)
                     qs = "; ".join(u["question"] for u in plan["unknown"])
                     return "skipped", f"question:{qs}"[:500], self.steps
-                return "skipped", f"needs_human:{plan['why'] or 'Haiku asked for help'} | {self.page.url}"[:500], self.steps
+                return "skipped", f"needs_human:{plan['why'] or 'Haiku asked for help'} | {self.page.url}"[:900], self.steps
             if st == "give_up":
                 why = plan["why"] or "gave up"
                 if "not easy apply" in why.lower():
@@ -324,7 +328,7 @@ class Agent:
                 _shot(self.page, self.job["id"], "agent-gaveup")
                 if _is_linkedin(self.page.url):
                     _discard_linkedin(self.page, self.human)
-                return "failed", f"site:{why} | {self.page.url}"[:300], self.steps
+                return "failed", f"site:{why} | {self.page.url}"[:900], self.steps
 
             # continue: carry out the actions with the ghost cursor
             for a in plan["actions"]:
@@ -351,7 +355,8 @@ class Agent:
                             self.page.go_back(wait_until="domcontentloaded")
                         self.history.append(f"   ✗ that went to {bad[:100]} — outside this application, went back")
                         if self.left_scope >= 2:
-                            return "failed", f"site:kept leaving the application ({bad[:80]}) | {before_url}"[:300], self.steps
+                            return "failed", ("site:My clicks kept taking me away from the job application "
+                                              f"(to {_host(bad)}), so I stopped. | {before_url}")[:900], self.steps
                         self.note = "Your last click left the job application. Do not click it again."
                     break  # new page: look again before doing more
             pause(2.0, 4.0)
