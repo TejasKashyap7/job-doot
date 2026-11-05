@@ -114,20 +114,31 @@ class Agent:
         self.note = ""
         self.steps = 0
         self.left_scope = 0
+        self.new_pages: list = []
+        self.ctx.on("page", lambda p: self.new_pages.append(p))
 
     # ---------- page bookkeeping ----------
-    def _switch_to_newest(self, before: list) -> bool:
-        new = [p for p in self.ctx.pages if p not in before and not p.is_closed()]
-        if not new:
+    def _switch_to_newest(self, wait: float = 0) -> bool:
+        """A click may open the company site in a new tab, sometimes seconds later
+        (LinkedIn shows its own popups first). Wait up to `wait` s for one."""
+        end = time.time() + wait
+        while True:
+            fresh = [p for p in self.new_pages if not p.is_closed()]
+            if fresh or time.time() >= end:
+                break
+            self.page.wait_for_timeout(500)
+        self.new_pages.clear()
+        if not fresh:
             return False
-        self.page = new[-1]
+        self.page = fresh[-1]
         try:
             self.page.wait_for_load_state("domcontentloaded", timeout=20000)
         except Exception:
             pass
         pause(2.5, 4.5)
+        self.page.bring_to_front()
         self.human = Human(self.page)
-        self.history.append(f"   → a new tab opened: {self.page.url[:120]}")
+        self.history.append(f"   → a new tab opened and I switched to it: {self.page.url[:120]}")
         return True
 
     def _in_scope(self, url: str) -> bool:
@@ -272,7 +283,7 @@ class Agent:
                 stuck += 1
                 if stuck >= STUCK_LIMIT:
                     _shot(self.page, self.job["id"], "agent-stuck")
-                    seen = self.history[-1].split("page: ", 1)[-1] if self.history else "the page"
+                    seen = next((h.split("page: ", 1)[1] for h in reversed(self.history) if "page: " in h), "the page")
                     tried = "; ".join(h.strip("   ✓✗") for h in self.history[-4:] if h.strip().startswith(("✓", "✗")))[:250]
                     why = (f"I kept trying but the page stayed exactly the same {STUCK_LIMIT} times in a row, so I "
                            f"stopped. I was on: {seen[:120]}. Last things I did: {tried or 'nothing worked'}.")
@@ -331,9 +342,9 @@ class Agent:
                 return "failed", f"site:{why} | {self.page.url}"[:900], self.steps
 
             # continue: carry out the actions with the ghost cursor
-            for a in plan["actions"]:
-                before_pages = list(self.ctx.pages)
+            for i, a in enumerate(plan["actions"]):
                 before_url = self.page.url
+                self.new_pages.clear()
                 try:
                     did = self._do(a, snap)
                 except Exception as exc:
@@ -342,7 +353,10 @@ class Agent:
                     break
                 self.history.append(f"   ✓ {did}")
                 pause(0.4, 1.4)
-                opened = self._switch_to_newest(before_pages)
+                el = next((e for e in snap["elements"] if e["n"] == a.get("n")), {})
+                may_open = a["do"] == "click" and (i == len(plan["actions"]) - 1 or el.get("new_tab")
+                                                   or re.search(r"\bapply\b", el.get("label", ""), re.I))
+                opened = self._switch_to_newest(wait=8 if may_open else 0.5)
                 if opened or self.page.url != before_url:
                     if not self._in_scope(self.page.url):
                         self.left_scope += 1
