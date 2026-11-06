@@ -24,6 +24,7 @@ from .human import Human, pause
 log = logging.getLogger(__name__)
 
 STUCK_LIMIT = 3
+REPEAT_LIMIT = 4   # same page state seen this many times in one job (not in a row) = going in circles
 
 DONE_RE = re.compile(
     r"thank you for (applying|your application|your interest)|application (has been |was )?"
@@ -267,6 +268,7 @@ class Agent:
                  "Only LinkedIn Easy Apply is allowed. If this job only has an external 'Apply' "
                  "(company website), use status give_up with why 'not easy apply'.")
         last_sig, stuck, need_shot = None, 0, False
+        visits: dict[str, int] = {}
         while True:
             self.steps += 1
             try:
@@ -293,6 +295,19 @@ class Agent:
             else:
                 stuck = 0
             last_sig = sig
+            # going round in circles: the page flips between the same few states (A, B, A, B, ...)
+            visits[sig] = visits.get(sig, 0) + 1
+            if visits[sig] >= REPEAT_LIMIT:
+                _shot(self.page, self.job["id"], "agent-loop")
+                seen = next((h.split("page: ", 1)[1] for h in reversed(self.history) if "page: " in h), "the page")
+                why = (f"I kept going round in circles: the page came back to exactly the same state "
+                       f"{REPEAT_LIMIT} times, so what I was doing was not working and I stopped. "
+                       f"I was on: {seen[:120]}.")
+                return "failed", f"site:{why} | {self.page.url}"[:900], self.steps
+            if visits[sig] >= 2 and not self.note:
+                self.note = (f"You have seen this EXACT page state before ({visits[sig]}x) — what you did last "
+                             "time did not work. Do something different. If a field will not keep its value "
+                             "or a dropdown will not pick, use give_up and say which field.")
 
             image = _shot(self.page, self.job["id"], "agent-view") if need_shot else None
             need_shot = False

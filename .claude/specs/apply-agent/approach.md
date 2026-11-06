@@ -349,6 +349,14 @@ progress → `failed: stuck_loop` with a screenshot. Every new page / changed fo
    in this slot. Not logged as an attempt. (Seen: HP "Applied Research - Data Scientist" twice,
    same Workday requisition.)
 
+### Going-in-circles stop (6 Nov 2026)
+Seen: Veersa (LOOPIN) form, 115+ Haiku calls over an hour — "Current CTC" kept clearing and the
+"Willing to relocate" dropdown kept toggling, so the page flipped between two states and the
+"same page 3× in a row" rule never fired. Rule added: count every page state seen in one job;
+the same state a **4th** time (in a row or not) = stop, `site:` failure with a plain sentence
+("I kept going round in circles…"). From the 2nd visit Haiku is told it has been here before
+and to try something different or give up naming the field. Still no page or time limit.
+
 ### Cost (Claude subscription, shared with Tejas's own use)
 ~1 Haiku call per page state ≈ 3–8 per application (today 1–3). Text snapshot, no
 screenshot by default (much cheaper); a screenshot is attached only on the retry after
