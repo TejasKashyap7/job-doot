@@ -1,13 +1,9 @@
-// job-doot home-screen widget for the free iPhone app "Scriptable" (Apple Fitness-style rings).
-// Shows today's numbers from the Pi over Tailscale (Tailscale app must be ON).
-// Spec: .claude/specs/dashboard/phone-widget.md
-//
-// Setup: Scriptable > + > paste this file > name it "job-doot" > tap play to preview.
-// Then: long-press home screen > + > Scriptable > Medium > Edit Widget > Script: job-doot.
-// Keep this file ASCII-only (use \u escapes): copying via Safari can mangle UTF-8.
-
-const URL = "http://100.66.138.76:8080/api/summary?key=PASTE_KEY_HERE"   // Pi's Tailscale address + widget key
-const DASHBOARD = "http://100.66.138.76:8080/"   // opened when you tap the widget
+// JOBDOOT_WIDGET_CODE -- job-doot home-screen widget for "Scriptable" (Apple Fitness-style rings).
+// Served by the Pi at /static/phone/jobdoot_widget.js and run by tools/phone/jobdoot_loader.js
+// (the only thing pasted on the phone). Changing this file + git push = widget updates itself.
+// Do NOT paste this file into Scriptable directly, and keep no secrets here (it is served openly).
+// Spec: .claude/specs/dashboard/phone-widget.md -> "Self-updating widget"
+// Keep this file ASCII-only (use \u escapes).
 const GOALS = { applied: 12, fetched: 30, needs_you: 5 }   // ring is full at these numbers
 
 // Colours taken from the wallpaper: can red, can silver, city-light amber.
@@ -21,9 +17,9 @@ const LABEL = new Color("#fff0ec", 0.80)
 const FOOT = new Color("#fff0ec", 0.62)
 const PLAIN = new Color("#000000")   // card colour
 
-async function load() {
+async function load(url) {
   try {
-    const r = new Request(URL)
+    const r = new Request(url)
     r.timeoutInterval = 10
     return await r.loadJSON()
   } catch (e) {
@@ -128,15 +124,16 @@ function footer(w, d) {
   t.lineLimit = 1
 }
 
-async function build() {
+// Entry point called by the loader: opts = { summaryUrl, dashboard }
+async function build(opts) {
   const family = config.widgetFamily || "medium"
   const w = new ListWidget()
   w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000)
   w.setPadding(13, 15, 13, 15)
-  w.url = DASHBOARD   // tap opens the dashboard in Safari instead of Scriptable
+  w.url = opts.dashboard   // tap opens the dashboard in Safari instead of Scriptable
   w.backgroundColor = PLAIN
 
-  const d = await load()
+  const d = await load(opts.summaryUrl)
   if (!d) {
     w.addSpacer()
     const n = w.addText("offline - Tailscale off or Pi down")
@@ -186,8 +183,3 @@ async function build() {
   footer(w, d)
   return w
 }
-
-const widget = await build()
-if (config.runsInWidget) Script.setWidget(widget)
-else await widget.presentMedium()   // tapping play in Scriptable shows the widget
-Script.complete()

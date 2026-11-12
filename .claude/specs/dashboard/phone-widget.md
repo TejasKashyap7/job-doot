@@ -14,7 +14,7 @@ checks can't tell Tailscale from home wifi — key instead (2026-11-03). Read-on
 Applier numbers come from `data/applier/applier.db` (+ PAUSED flag), read-only.
 
 ## iPhone widget (Scriptable, free)
-`tools/phone/jobdoot_widget.js` — fetches /api/summary over Tailscale every ~15 min,
+`backend/static/phone/jobdoot_widget.js` (loaded by `tools/phone/jobdoot_loader.js`, see "Self-updating widget") — fetches /api/summary over Tailscale every ~15 min,
 shows status colour + Fetched / Applied / Need you / Interviews. Red when anything is
 sick or paused. Shows "offline" if the Pi or Tailscale is unreachable.
 
@@ -72,3 +72,21 @@ widget at the next refresh, in plain words.**
   Empty when green. The widget shows `d.reason` (falls back to the old logic if the
   field is missing). One-time re-paste of the widget script into Scriptable; after
   that, new error types only need a backend change.
+
+## Self-updating widget (decided 2026-11-12, Tejas)
+Problem: every widget change meant re-pasting the script into Scriptable by hand.
+- The widget code lives at `backend/static/phone/jobdoot_widget.js` and the Pi serves it
+  at `http://100.66.138.76:8080/static/phone/jobdoot_widget.js` (plain static file, no
+  secrets in it). It defines `async function build(opts)`, with
+  `opts = {summaryUrl, dashboard}`, and returns the ListWidget. It must contain the
+  marker `JOBDOOT_WIDGET_CODE` and stay ASCII-only.
+- On the phone, Scriptable holds only `tools/phone/jobdoot_loader.js` (pasted once, holds
+  WIDGET_KEY). On every run it downloads the code (10 s timeout, cache-busting query),
+  keeps the last good copy in Scriptable's local Documents (`jobdoot_widget_code.js`) only
+  if HTTP 200 + marker, and runs it via an AsyncFunction with the opts. Pi/Tailscale down →
+  runs the cached copy (which shows "offline"). No cache yet → a short "turn on Tailscale"
+  card.
+- So deploying a widget change = `git push` to main (the Pi auto-deploys); the phone picks
+  it up at its next refresh (~15 min).
+- Trust: the phone runs whatever the Pi serves. It only ever fetches over Tailscale from
+  the Pi's tailnet IP, so that's accepted (Tejas, 2026-11-12).
