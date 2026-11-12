@@ -64,6 +64,15 @@ still expired.
 - **C. Detect auth errors** — on an auth failure, stop the slot, pause applying with a
   reason, and send ONE "Claude needs login" alert instead of failing job after job.
 
+**Note (2026-11-12):** `brain.py` deliberately strips `CLAUDE_CODE_OAUTH_TOKEN` from the
+env before calling `claude`, so Option B needs a code change to work.
+
+**Decision (Tejas, 2026-11-12):** logged in again (A) late on 12 Nov. C built in a lighter
+form, with no pause flag (it would need a manual `resume`): on an auth error the slot ends,
+the job is NOT logged as failed, `HEALTH.json` says `claude_logged_out` → widget red with
+"Claude logged out (Pi)", plus one Telegram alert per day. The next slot after the login
+works on its own. Spec: `dashboard/phone-widget.md` → "Applier errors on the widget".
+
 ---
 
 ## FLAW-3: A slot that crashes before reaching any job leaves no notification
@@ -81,6 +90,11 @@ there were no applications.
 - **A.** The daemon records slot crashes, and the bell raises one notification per
   crash streak.
 - **B.** The 21:30 digest says "N slots crashed today" with the error's first line.
+
+**Decision (Tejas, 2026-11-12):** "any error must show on the phone widget". The daemon
+writes `data/applier/HEALTH.json` after every slot (`crashed` + streak + first error line);
+`/api/summary` turns it red with `Applier: crashed HH:MM (xN)`. Spec:
+`dashboard/phone-widget.md` → "Applier errors on the widget".
 
 ---
 

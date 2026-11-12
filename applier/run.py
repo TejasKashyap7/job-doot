@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 from zoneinfo import ZoneInfo
 
-from . import backend, notify, safety, store
+from . import backend, health, notify, safety, store
 from .browser import Session
 from .config import DATA, load_profile
 from .easy_apply import apply_to_job
@@ -92,6 +92,17 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
                 log.exception("Job %s crashed", job["id"])
                 status, detail, steps = "failed", f"crash:{type(exc).__name__}: {exc}"[:300], 0
             log.info("Job %s -> %s (%s)", job["id"], status, detail)
+            if status == "failed" and detail.startswith("brain:") and health.is_login_error(detail):
+                # Not the job's fault: don't log the attempt (it stays eligible), stop here,
+                # and say so on the widget. The first slot after a re-login just works.
+                log.warning("Claude is logged out on the Pi — ending slot, job %s left for later", job["id"])
+                health.record(health.LOGGED_OUT, "Claude logged out (Pi)", detail[len("brain:"):])
+                flag = DATA / f"login-notified-{datetime.now():%Y%m%d}"
+                if not flag.exists():
+                    flag.touch()
+                    notify.send(cfg, f"🔑 Applier for {applicant}: Claude is logged out on the Pi, "
+                                     "so nothing can be applied.\nFix: ssh tejas@pi5 → claude → /login")
+                return
             if status == "failed":
                 _shot(page, job["id"])
             store.log_attempt(conn, applicant, job, status, detail, steps)
@@ -180,9 +191,19 @@ def daemon(cfg):
             if wait > 0:
                 time.sleep(wait)
             try:
-                run_slot(cfg) if kind == "slot" else send_digest(cfg)
-            except Exception:
+                if kind == "slot":
+                    before = health.writes
+                    run_slot(cfg)
+                    if health.writes == before:  # slot didn't report an error itself
+                        health.record(health.OK)
+                else:
+                    send_digest(cfg)
+            except Exception as exc:
                 log.exception("%s failed", kind)
+                if kind == "slot":
+                    first = (str(exc).splitlines() or [""])[0]
+                    health.record(health.CRASHED, f"crashed {datetime.now():%H:%M}",
+                                  f"{type(exc).__name__}: {first}")
         tomorrow = datetime(now.year, now.month, now.day, tzinfo=tz) + timedelta(days=1, minutes=5)
         time.sleep(max(0, (tomorrow - datetime.now(tz)).total_seconds()))
 
