@@ -335,6 +335,7 @@ def apply_to_job(page, cfg, conn, job: dict) -> tuple[str, str, int]:
                 _snapshot(page, job["id"], "brain")
                 _discard(page, human)
                 return "failed", f"brain:{exc}"[:300], steps
+            store.record_made_up(conn, applicant, res.get("made_up"), job["id"])
             if res["unknown"]:
                 for fid in res["unknown"]:
                     f = next(x for x in todo if x["id"] == fid)

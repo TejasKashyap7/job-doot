@@ -321,6 +321,7 @@ class Agent:
                 _shot(self.page, self.job["id"], "agent-brain")
                 return "failed", f"brain:{exc}"[:300], self.steps
             self.note = ""
+            store.record_made_up(self.conn, applicant, plan.get("made_up"), self.job["id"])
             log.info("  [%d] %s | %s | %s", self.steps, plan["page"][:90], plan["status"],
                      "; ".join(f"{a['do']} {a.get('n', a.get('dir', a.get('key', '')))}" for a in plan["actions"])[:200])
             self.history.append(f"step {self.steps} — page: {plan['page'][:100]}")

@@ -13,16 +13,38 @@ import tempfile
 
 log = logging.getLogger(__name__)
 
-PROMPT = """You fill in a LinkedIn Easy Apply form for ONE applicant.
-
-Use ONLY the applicant facts and the answered questions below. Never invent
-experience, skills, degrees, certifications or numbers. Honesty rules:
+HONEST_RULES = """HONESTY (hard rules):
+- Answer ONLY from the applicant facts and the answered questions below. Never invent
+  experience, skills, degrees, certifications, numbers, links or employers.
 - Years of experience with a skill/tool the applicant does not list = 0.
 - Yes/No "do you have experience with X" where X is not in the facts = No.
-- Select/radio answers MUST be copied exactly from that field's "options".
+- A REQUIRED question you cannot answer truthfully from the facts or the answered questions:
+  do NOT guess — put it in "unknown" (browser: and set status "ask_human").
+- "made_up" must stay empty.
+"""
+
+# Test (dummy) accounts only — .claude/specs/apply-agent/assumption.md
+TEST_RULES = """TEST ACCOUNT (made-up answers allowed):
+- The applicant facts and the answered questions always win — use them first, unchanged.
+- Any other question (required or not): INVENT a realistic, believable answer that fits this
+  applicant and stays consistent with the facts and with earlier answers. It must read like a
+  real person's answer: never "test", "N/A", "xyz", "abc", "123456", "lorem", dummy emails or
+  obviously fake numbers. Keep claims modest and plausible.
+- List EVERY invented answer in "made_up" (question as written + your answer).
+- Never invent government ID numbers (PAN, Aadhaar, passport, SSN, national ID): put that field
+  in "unknown" (browser: status "ask_human").
+- Gender / title (Mr./Ms.): pick a "prefer not to say" option if one exists, else "unknown".
+"""
+
+
+def _rules(cfg) -> str:
+    return TEST_RULES if cfg.get("test_mode") else HONEST_RULES
+
+
+PROMPT = """You fill in a LinkedIn Easy Apply form for ONE applicant.
+
+{rules}- Select/radio answers MUST be copied exactly from that field's "options".
 - Numeric fields: a plain number only.
-- If a REQUIRED field cannot be answered truthfully from the facts or the answered
-  questions, put its id in "unknown" instead of guessing.
 - Optional fields you cannot answer: leave them out.
 - Checkbox fields: answer "yes" to tick or "no" to leave unticked (tick consent /
   terms-of-application boxes only if required).
@@ -34,7 +56,8 @@ experience, skills, degrees, certifications or numbers. Honesty rules:
   to learn.
 
 Reply with ONLY this JSON, nothing else:
-{{"answers": {{"<field id>": "<value>"}}, "unknown": ["<field id>"]}}
+{{"answers": {{"<field id>": "<value>"}}, "unknown": ["<field id>"],
+ "made_up": [{{"question": "<field label as written>", "answer": "<what you invented>"}}]}}
 
 APPLICANT FACTS:
 {facts}
@@ -83,6 +106,14 @@ def _call(cfg, prompt: str, model: str, image: str | None = None) -> dict:
     return json.loads(m.group(0))
 
 
+def _made_up(cfg, data: dict) -> list[dict]:
+    if not cfg.get("test_mode"):
+        return []
+    return [{"question": str(m["question"])[:500], "answer": str(m["answer"])[:500]}
+            for m in (data.get("made_up") or [])
+            if isinstance(m, dict) and m.get("question") and m.get("answer") not in (None, "")]
+
+
 def _validate(data: dict, fields: list[dict]) -> dict:
     by_id = {f["id"]: f for f in fields}
     answers = {k: str(v) for k, v in (data.get("answers") or {}).items() if k in by_id}
@@ -109,14 +140,17 @@ def answer_fields(cfg, fields: list[dict], qa: list[dict], job: dict, errors: st
     qa_text = "\n".join(f"Q: {q['question']}\nA: {q['answer']}" for q in qa) or "(none yet)"
     slim = [{k: f[k] for k in ("id", "type", "label", "required", "options") if k in f} for f in fields]
     prompt = PROMPT.format(
-        facts=cfg["facts"].strip(), qa=qa_text, title=job.get("title"), company=job.get("company"),
+        rules=_rules(cfg), facts=cfg["facts"].strip(), qa=qa_text, title=job.get("title"), company=job.get("company"),
         errors=f"\nTHE FORM REJECTED THE LAST ANSWERS WITH: {errors}\n" if errors else "",
         fields=json.dumps(slim, ensure_ascii=False, indent=1),
     )
     last = None
     for model in (cfg["models"]["primary"], cfg["models"]["retry"]):
         try:
-            return _validate(_call(cfg, prompt, model), fields)
+            data = _call(cfg, prompt, model)
+            res = _validate(data, fields)
+            res["made_up"] = _made_up(cfg, data)
+            return res
         except BrainQuota:
             raise  # same account for both models — retrying with Sonnet won't help
         except (BrainError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
@@ -149,14 +183,7 @@ TAB — the browser switches you there automatically. LinkedIn's own "Did you fi
 "Did you apply?" question: NEVER answer Yes unless an application really was confirmed; close it
 or answer No.
 
-HONESTY (hard rules):
-- Answer ONLY from the applicant facts and answered questions below. Never invent experience,
-  skills, degrees, certifications, numbers, links or employers.
-- Years of experience with a skill not in the facts = 0. "Do you have experience with X" where X
-  is not in the facts = No.
-- Select / radio answers must be one of that element's options, copied exactly.
-- A REQUIRED question you cannot answer truthfully from the facts/answers: do NOT guess — put it
-  in "unknown" and set status "ask_human".
+{rules}- Select / radio answers must be one of that element's options, copied exactly.
 - Cover letter / "why do you want to join" boxes: 3-4 short honest sentences from the facts and
   the job title/company; early-career and keen to learn is fine.
 - Tick consent / terms checkboxes only when required to apply. Never subscribe to newsletters.
@@ -188,7 +215,8 @@ STATUS:
 
 Reply with ONLY this JSON:
 {{"page":"<one line: what this page is>","actions":[...],"status":"continue",
-  "unknown":[{{"n":N,"question":"<the question as written>"}}],"why":"<for non-continue>"}}
+  "unknown":[{{"n":N,"question":"<the question as written>"}}],"why":"<for non-continue>",
+  "made_up":[{{"question":"<the question as written>","answer":"<what you invented>"}}]}}
 "why" is shown to the job seeker in a notification: write it in 1-3 SIMPLE sentences for a
 non-technical person — what you saw on the page, what you tried, and why you stopped.
 No codes, no element numbers. Example: "The company page only had a job-search box and a
@@ -277,7 +305,7 @@ def next_actions(cfg, snap: dict, rendered: str, job: dict, qa: list[dict], hist
                  note: str = "", scope: str = "", image: str | None = None) -> dict:
     qa_text = "\n".join(f"Q: {q['question']}\nA: {q['answer']}" for q in qa) or "(none yet)"
     prompt = AGENT_PROMPT.format(
-        title=job.get("title"), company=job.get("company"), scope=scope,
+        rules=_rules(cfg), title=job.get("title"), company=job.get("company"), scope=scope,
         resume_name=os.path.basename(str(cfg.get("resume_pdf") or "resume.pdf")),
         facts=cfg["facts"].strip(), qa=qa_text,
         history="\n".join(history[-8:]) or "(just opened the job page)",
@@ -290,7 +318,10 @@ def next_actions(cfg, snap: dict, rendered: str, job: dict, qa: list[dict], hist
     last = None
     for model in (cfg["models"]["primary"], cfg["models"]["retry"]):
         try:
-            return _validate_plan(_call(cfg, prompt, model, image), snap)
+            data = _call(cfg, prompt, model, image)
+            plan = _validate_plan(data, snap)
+            plan["made_up"] = _made_up(cfg, data)
+            return plan
         except BrainQuota:
             raise
         except (BrainError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:

@@ -22,6 +22,11 @@ DEFAULTS = {
     "max_per_slot": 2,            # applications per slot (spec: 1-2)
     "max_views_per_slot": 12,     # job pages opened per slot while looking for 1-2 to apply to
     "digest_time": "21:30",
+    # Test mode (assumption.md): daily_target "fetched" => applications/day = jobs fetched/day
+    "daily_target": None,
+    "sweep_time": "22:00",        # last catch-up slot of the day (daily_target only)
+    "sweep_max_views": 150,
+    "test_mode": False,           # True => made-up answers for unknown questions
     "claude_bin": "~/.local/bin/claude",
     "models": {"primary": "haiku", "retry": "sonnet"},
 }

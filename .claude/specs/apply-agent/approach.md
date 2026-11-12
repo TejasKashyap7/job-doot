@@ -380,3 +380,27 @@ kind of sentence from the script.
 
 ### Open points
 - Wall-clock limit per job: **none** (Tejas, 2026-11-05: "no time limit"). Stuck detection is the only stop.
+
+## Test mode: volume = jobs fetched + made-up answers (decided 2026-11-13, Tejas)
+Rules and the real-account plan: `assumption.md`. Overrides "Honest answers only" and the
+1–2-per-slot pacing **for test (dummy) profiles only**.
+
+Profile switches (in the applicant YAML):
+- `test_mode: true` → made-up answers. Both prompts (form filler + browser agent) swap the
+  honesty block for: "facts and answered questions win; for any other question invent a
+  realistic, consistent, believable answer for this applicant; never placeholder-looking;
+  never government ID numbers (→ unknown); gender/title → 'prefer not to say' option or
+  unknown. List every invented answer in `made_up: [{question, answer}]`." The code stores
+  each made-up answer in `qa_bank` (`status='ANSWERED'`, `made_up=1`, job_id), so later
+  forms reuse it and the history is kept.
+- `daily_target: fetched` → target applications today = jobs fetched today (IST), read from
+  the backend DB. `min_score: 0`.
+
+Scheduling when `daily_target: fetched`:
+- More slots: `slots_per_day: [10, 12]`, `active_hours: [9, 22]`, `min_slot_gap_min: 20` (30 made 12 slots in 13 h almost impossible to place).
+- Each slot sets its own target: `ceil(remaining / slots_left_today)`, with remaining =
+  target − applied today (min 1 while remaining > 0, 0 if met). Views cap = max(15, 5 × slot target).
+- **Sweep slot** at 22:00: target = everything remaining, views cap 150.
+  So by the end of the day, applied ≈ fetched unless the candidate list runs out or LinkedIn
+  safety stops fire (those still pause everything, unchanged).
+- Digest moves to 23:30 so it reports after the sweep (`digest_time: "23:30"`).

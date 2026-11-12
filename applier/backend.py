@@ -23,6 +23,13 @@ rows = c.execute(f'''
 print(json.dumps([dict(id=r[0], title=r[1], company=r[2], url=r[3], score=r[4], apply_type=r[5]) for r in rows]))
 """
 
+# Jobs fetched (scraped) since an IST midnight; date_scraped is naive UTC (datetime.utcnow).
+_FETCHED = r"""
+import json, sqlite3, sys
+c = sqlite3.connect('/app/data/jobs.db')
+print(json.dumps(c.execute('SELECT count(*) FROM jobs WHERE date_scraped >= ?', (sys.argv[1],)).fetchone()[0]))
+"""
+
 _TG = r"""
 import json, sqlite3, sys
 c = sqlite3.connect('/app/data/jobs.db')
@@ -44,6 +51,10 @@ def candidate_jobs(cfg) -> list[dict]:
     # Company-site ("offsite") jobs are skipped until the Phase 2 company-site applier ships.
     return _run(cfg["backend_container"], _JOBS, cfg["pick_jobs_from_user_id"], cfg["min_score"],
                 "1" if cfg.get("include_offsite") else "0")
+
+
+def fetched_since(cfg, utc_naive_iso: str) -> int:
+    return int(_run(cfg["backend_container"], _FETCHED, utc_naive_iso))
 
 
 def telegram_creds(cfg) -> dict | None:

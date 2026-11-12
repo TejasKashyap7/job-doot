@@ -198,6 +198,7 @@ def _fill_site(site, cfg, conn, job, human: Human) -> tuple[str, str, int]:
             except BrainError as exc:
                 _snapshot(site, job["id"], "offsite-brain")
                 return "failed", f"brain:{exc}"[:300], step
+            store.record_made_up(conn, applicant, res.get("made_up"), job["id"])
             if res["unknown"]:
                 for fid in res["unknown"]:
                     f = next(x for x in todo if x["id"] == fid)

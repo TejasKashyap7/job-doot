@@ -11,10 +11,11 @@
 """
 import argparse
 import logging
+import math
 import random
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from zoneinfo import ZoneInfo
 
@@ -49,7 +50,7 @@ def _shot(page, job_id):
         pass
 
 
-def run_slot(cfg, max_apply: int | None = None) -> None:
+def run_slot(cfg, max_apply: int | None = None, max_views: int | None = None) -> None:
     if (why := safety.is_paused()):
         log.info("Paused (%s) — skipping slot", why)
         return
@@ -57,6 +58,7 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
     applicant = cfg["name"]
     excluded = store.excluded_job_ids(conn, applicant)
     target = max_apply or random.randint(1, cfg["max_per_slot"])
+    view_cap = max_views or cfg["max_views_per_slot"]
     applied = views = crashes = 0
     with Session(cfg) as page:
         if cfg.get("source") == "linkedin_search":
@@ -76,7 +78,7 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
                  target, len(jobs), cfg.get("source", "db"))
         seen = store.tried_keys(conn, applicant, excluded)
         for job in jobs:
-            if applied >= target or views >= cfg["max_views_per_slot"]:
+            if applied >= target or views >= view_cap:
                 break
             key = store.job_key(job["title"], job["company"])
             if job["title"] and seen.get(key, job["id"]) != job["id"]:
@@ -137,7 +139,7 @@ def run_slot(cfg, max_apply: int | None = None) -> None:
                 if crashes >= 2:
                     log.info("Browser crashed twice — ending this slot (not a pause)")
                     break
-            if applied < target and views < cfg["max_views_per_slot"]:
+            if applied < target and views < view_cap:
                 pause(120, 360) if status == "applied" else pause(20, 60)
     log.info("Slot done: %d applied, %d pages viewed", applied, views)
 
@@ -177,6 +179,42 @@ def send_digest(cfg):
     notify.send(cfg, "\n".join(lines))
 
 
+def today_progress(cfg) -> tuple[int, int] | None:
+    """Test mode (daily_target: fetched): (jobs fetched today, applied today), IST day.
+    None when not in that mode or the backend can't be read (then slots use old pacing).
+    Spec: apply-agent/assumption.md + approach.md "Test mode"."""
+    if cfg.get("daily_target") != "fetched":
+        return None
+    tz = ZoneInfo(cfg["timezone"])
+    midnight = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        fetched = backend.fetched_since(
+            cfg, midnight.astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds"))
+    except Exception:
+        log.exception("could not read today's fetched count — using normal pacing")
+        return None
+    applied = store.applied_since(store.connect(), cfg["name"],
+                                  midnight.replace(tzinfo=None).isoformat(timespec="seconds"))
+    return fetched, applied
+
+
+def slot_size(cfg, kind: str, slots_left: int) -> tuple[int | None, int | None]:
+    """(applications, page views) for this slot. (None, None) = normal 1-2 pacing.
+    (0, 0) = today's target already met."""
+    prog = today_progress(cfg)
+    if prog is None:
+        return None, None
+    fetched, applied = prog
+    remaining = max(0, fetched - applied)
+    log.info("Today: fetched %d, applied %d, remaining %d, slots left %d", fetched, applied, remaining, slots_left)
+    if remaining == 0:
+        return 0, 0
+    if kind == "sweep":
+        return remaining, cfg["sweep_max_views"]
+    n = max(1, math.ceil(remaining / max(1, slots_left)))
+    return n, max(cfg["max_views_per_slot"], 5 * n)
+
+
 def daemon(cfg):
     tz = ZoneInfo(cfg["timezone"])
     dh, dm = map(int, cfg["digest_time"].split(":"))
@@ -184,23 +222,33 @@ def daemon(cfg):
         now = datetime.now(tz)
         slots = [t for t in plan_day(cfg, now.date()) if t > now]
         digest = datetime(now.year, now.month, now.day, dh, dm, tzinfo=tz)
-        events = sorted([(t, "slot") for t in slots] + ([(digest, "digest")] if digest > now else []))
+        events = [(t, "slot") for t in slots] + ([(digest, "digest")] if digest > now else [])
+        if cfg.get("daily_target") == "fetched":
+            sh, sm = map(int, cfg["sweep_time"].split(":"))
+            sweep = datetime(now.year, now.month, now.day, sh, sm, tzinfo=tz)
+            if sweep > now:
+                events.append((sweep, "sweep"))
+        events.sort()
         log.info("Today's plan: %s", ", ".join(f"{t:%H:%M} {k}" for t, k in events) or "nothing left")
-        for t, kind in events:
+        for i, (t, kind) in enumerate(events):
             wait = (t - datetime.now(tz)).total_seconds()
             if wait > 0:
                 time.sleep(wait)
             try:
-                if kind == "slot":
+                if kind in ("slot", "sweep"):
+                    n, views = slot_size(cfg, kind, sum(k != "digest" for _, k in events[i:]))
+                    if n == 0:
+                        log.info("Today's target already met — skipping %s", kind)
+                        continue
                     before = health.writes
-                    run_slot(cfg)
+                    run_slot(cfg, n, views)
                     if health.writes == before:  # slot didn't report an error itself
                         health.record(health.OK)
                 else:
                     send_digest(cfg)
             except Exception as exc:
                 log.exception("%s failed", kind)
-                if kind == "slot":
+                if kind in ("slot", "sweep"):
                     first = (str(exc).splitlines() or [""])[0]
                     health.record(health.CRASHED, f"crashed {datetime.now():%H:%M}",
                                   f"{type(exc).__name__}: {first}")

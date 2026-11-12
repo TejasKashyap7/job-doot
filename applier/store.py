@@ -50,6 +50,10 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DATA / "applier.db", timeout=30)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    # Test mode (assumption.md): made-up answers are flagged so the real account can re-answer them.
+    if "made_up" not in {r[1] for r in conn.execute("PRAGMA table_info(qa_bank)")}:
+        conn.execute("ALTER TABLE qa_bank ADD COLUMN made_up INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
     return conn
 
 
@@ -125,12 +129,36 @@ def unanswered(conn, applicant) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def answer(conn, qa_id: int, text: str):
+def answer(conn, qa_id: int, text: str, made_up: bool = False):
     conn.execute(
-        "UPDATE qa_bank SET answer=?, status='ANSWERED', answered_at=? WHERE id=?",
-        (text, now(), qa_id),
+        "UPDATE qa_bank SET answer=?, status='ANSWERED', answered_at=?, made_up=? WHERE id=?",
+        (text, now(), int(made_up), qa_id),
     )
     conn.commit()
+
+
+def record_made_up(conn, applicant, items, job_id) -> int:
+    """Test mode: keep every invented answer (question as written + answer), flagged made_up=1.
+    A question already in the bank keeps its existing answer. Returns how many were new."""
+    new = 0
+    for it in items or []:
+        q, a = str(it.get("question", "")).strip(), str(it.get("answer", "")).strip()
+        if not q or not a:
+            continue
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO qa_bank(applicant, question, field_type, options, answer, status,"
+            " job_id, first_seen, answered_at, made_up) VALUES (?,?,?,?,?,'ANSWERED',?,?,?,1)",
+            (applicant, q[:500], None, "", a[:500], job_id, now(), now()),
+        )
+        new += cur.rowcount
+    conn.commit()
+    return new
+
+
+def applied_since(conn, applicant, since_local_iso: str) -> int:
+    return conn.execute(
+        "SELECT count(*) FROM attempts WHERE applicant=? AND status='applied' AND created_at>=?",
+        (applicant, since_local_iso)).fetchone()[0]
 
 
 def day_summary(conn, applicant, hours=24) -> dict:
