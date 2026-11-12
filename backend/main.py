@@ -96,6 +96,11 @@ def health():
     return {"status": "ok"}
 
 
+# Login lasts a year: a session-only cookie is dropped whenever iOS closes the browser
+# (spec: multi-user/approach.md -> Auth, "Stay logged in").
+LOGIN_COOKIE_MAX_AGE = 365 * 24 * 3600
+
+
 @app.get("/api/summary")
 def api_summary(request: Request, db: Session = Depends(get_db)):
     """Today's numbers for the iPhone widget. Needs ?key=<WIDGET_KEY> (set in .env).
@@ -250,6 +255,7 @@ def login_submit(request: Request, username: str = Form(...), password: str = Fo
     resp.set_cookie(
         COOKIE_NAME, make_cookie_value(user.id),
         httponly=True, samesite="lax", secure=False, path="/",
+        max_age=LOGIN_COOKIE_MAX_AGE,
     )
     return resp
 
@@ -343,6 +349,7 @@ async def signup_submit(
     resp.set_cookie(
         COOKIE_NAME, make_cookie_value(user.id),
         httponly=True, samesite="lax", secure=False, path="/",
+        max_age=LOGIN_COOKIE_MAX_AGE,
     )
     return resp
 

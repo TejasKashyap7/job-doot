@@ -49,6 +49,14 @@ Real per-user login replaces the single `DASHBOARD_PASSWORD` cookie — session 
 carries `user_id`. Passwords hashed with bcrypt. Dashboard queries `job_user_state`
 filtered to the logged-in user, joined with `Job`'s shared fields.
 
+**Stay signed in, like normal sites (decided 2026-11-13, applies to every user):** each user
+signs in once per device/browser and stays signed in there. The login cookie gets
+`max_age` = 1 year (both the sign-in and sign-up handlers). Before this it had no expiry,
+so browsers treated it as a session cookie. Mobile browsers (iOS Brave/Safari) drop those
+whenever the app is closed, so phones asked for the password on almost every visit.
+"Log out" still deletes the cookie on that device. A new device needs one sign-in, same as
+any website.
+
 ## Admin (confirmed 2026-09-16)
 `users.is_admin` — only Tejas's account. `/admin` view lists all users (username,
 signup date, last activity) + per-user operational stats (jobs scored/tailored, current
