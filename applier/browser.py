@@ -51,26 +51,59 @@ def ensure_chromium(cfg) -> None:
 class Session:
     """Context manager: yields a fresh tab in the applier's logged-in browser."""
 
+    CONNECT_TRIES = 3
+    CONNECT_GAP_S = 5
+
     def __init__(self, cfg):
         self.cfg = cfg
+        self.pw = None
+        self.page = None
 
     def __enter__(self):
         ensure_chromium(self.cfg)
         self.pw = sync_playwright().start()
-        self.browser = self.pw.chromium.connect_over_cdp(f"http://127.0.0.1:{self.cfg['debug_port']}")
-        ctx = self.browser.contexts[0]
-        self.page = ctx.new_page()
-        self.page.set_default_timeout(20000)
+        # Python skips __exit__ when __enter__ raises, so a failure past this point
+        # must stop Playwright here — otherwise its event loop stays alive in this
+        # long-running daemon and every later slot fails with "Sync API inside the
+        # asyncio loop" (apply-agent/flaws.md FLAW-1).
+        try:
+            browser = self._connect()
+            self.page = browser.contexts[0].new_page()
+            self.page.set_default_timeout(20000)
+        except BaseException:
+            self._close()
+            raise
         return self.page
 
-    def __exit__(self, *exc):
-        try:
-            self.page.close()
-        except Exception:
-            pass
+    def _connect(self):
+        """connect_over_cdp, retried: Chromium may still be restarting (port up, CDP not ready)."""
+        url = f"http://127.0.0.1:{self.cfg['debug_port']}"
+        for attempt in range(1, self.CONNECT_TRIES + 1):
+            try:
+                return self.pw.chromium.connect_over_cdp(url)
+            except Exception as e:
+                if attempt == self.CONNECT_TRIES:
+                    raise
+                log.warning("CDP connect failed (try %d/%d): %s — retrying",
+                            attempt, self.CONNECT_TRIES, str(e).splitlines()[0])
+                time.sleep(self.CONNECT_GAP_S)
+                ensure_chromium(self.cfg)
+
+    def _close(self):
+        if self.page is not None:
+            try:
+                self.page.close()
+            except Exception:
+                pass
+            self.page = None
         # Disconnect only — the browser keeps running like a person's would.
-        try:
-            self.pw.stop()
-        except Exception:
-            pass
+        if self.pw is not None:
+            try:
+                self.pw.stop()
+            except Exception:
+                pass
+            self.pw = None
+
+    def __exit__(self, *exc):
+        self._close()
         return False
