@@ -3,7 +3,7 @@
 ---
 
 ## FLAW-1: One failed browser connection breaks every later slot until the applier is restarted
-**Status: OPEN — fix written (Options A + B, Tejas asked for it 2026-11-12); mark RESOLVED only after it is deployed on the Pi and a slot runs clean**
+**Status: RESOLVED (2026-11-12, Tejas asked Claude to close it) — A + B + C built and deployed on the Pi**
 
 **The problem:**
 Each slot opens the browser in three steps (`applier/browser.py` → `Session.__enter__`):
@@ -38,7 +38,16 @@ started 16:12:06) was still running a day later.
 - **D. Alert** — a whole-slot crash raises one bell + Telegram notification
   (today it is silent; see FLAW-3).
 
-**Decision (Tejas, 2026-11-12):** fix the code now → A + B built. C and D not built yet.
+**Decision (Tejas, 2026-11-12):** fix the code now → A + B built (commit 3b83489). Then
+"if one try gets stuck it must clear up so the next tries can run" → **C built too**, in its
+simplest form: **any** slot crash makes the daemon exit with code 1 (after writing
+HEALTH.json), and systemd (`Restart=on-failure`, `RestartSec=120`) starts a clean process
+that re-plans the rest of the day. So no stuck state of any kind can outlive one slot.
+D is covered by the widget work (FLAW-3).
+
+**Verified:** repro test — old code: slot 1 refused, slots 2–3 "Sync API inside the asyncio
+loop"; new code: every slot starts fresh. Late-starting Chromium connects on retry. On the Pi,
+two Sessions in a row connect to the real Chromium (12 Nov 23:25).
 
 ---
 

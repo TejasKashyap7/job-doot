@@ -204,6 +204,11 @@ def daemon(cfg):
                     first = (str(exc).splitlines() or [""])[0]
                     health.record(health.CRASHED, f"crashed {datetime.now():%H:%M}",
                                   f"{type(exc).__name__}: {first}")
+                    # Whatever got stuck, a fresh process clears it: exit non-zero and
+                    # systemd (Restart=on-failure) restarts us and re-plans the day.
+                    # Spec: apply-agent/flaws.md FLAW-1, option C.
+                    log.error("Slot crashed — exiting so systemd restarts the applier clean")
+                    sys.exit(1)
         tomorrow = datetime(now.year, now.month, now.day, tzinfo=tz) + timedelta(days=1, minutes=5)
         time.sleep(max(0, (tomorrow - datetime.now(tz)).total_seconds()))
 
