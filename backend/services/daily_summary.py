@@ -1,5 +1,6 @@
 """Today's numbers in one place — feeds the iPhone widget (/api/summary) and the daily
 09:30 calendar event. Spec: .claude/specs/dashboard/phone-widget.md"""
+import json
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -47,6 +48,15 @@ def _applier_numbers(start_local: str, end_local: str) -> dict:
     return out
 
 
+def _applier_health() -> dict:
+    """Last-slot result the applier writes after every slot (HEALTH.json).
+    Spec: phone-widget.md → "Applier errors on the widget"."""
+    try:
+        return json.loads((APPLIER_DIR / "HEALTH.json").read_text())
+    except Exception:
+        return {}
+
+
 def build_summary(db, days_ago: int = 0) -> dict:
     """days_ago=0 → today so far (widget); 1 → the whole of yesterday (morning event)."""
     now_ist = datetime.now(IST)
@@ -80,20 +90,38 @@ def build_summary(db, days_ago: int = 0) -> dict:
     # applier timestamps are local (IST) naive ISO strings written on the Pi host
     ap = _applier_numbers(start_ist.replace(tzinfo=None).isoformat(timespec="seconds"),
                           end_ist.replace(tzinfo=None).isoformat(timespec="seconds"))
+    health = _applier_health()
+    applier_error = health.get("result") in ("claude_logged_out", "crashed")
     if ap["paused"]:
         applier = f"paused: {ap['paused']}"
+    elif health.get("result") == "claude_logged_out":
+        applier = health.get("message") or "Claude logged out (Pi)"
+    elif health.get("result") == "crashed":
+        streak = health.get("streak", 1)
+        applier = (health.get("message") or "crashed") + (f" (x{streak})" if streak > 1 else "")
     elif ap["last_activity"] and datetime.fromisoformat(ap["last_activity"]) < (
             now_ist.replace(tzinfo=None) - timedelta(hours=26)):
         applier = "quiet for over a day"
     else:
         applier = "running"
 
-    if scraper in ("sick", "paused") or ap["paused"]:
+    if scraper in ("sick", "paused") or ap["paused"] or applier_error:
         status = "red"
     elif scraper != "healthy" or applier != "running" or ap["open_questions"]:
         status = "yellow"
     else:
         status = "green"
+    # What the widget footer says: the most serious problem first (phone-widget.md).
+    reasons = []
+    if ap["paused"] or applier_error:
+        reasons.append(f"Applier: {applier}")
+    if scraper != "healthy":
+        reasons.append(f"Scraper: {scraper}")
+    if applier != "running" and not (ap["paused"] or applier_error):
+        reasons.append(f"Applier: {applier}")
+    if ap["open_questions"]:
+        reasons.append(f"{ap['open_questions']} questions to answer")
+    reason = reasons[0] if reasons and status != "green" else ""
 
     line = (f"📊 Fetched {fetched} · Applied {ap['applied']} · Need you {ap['needs_you']}"
             + (f" · Interviews {interviews}" if interviews else "")
@@ -102,6 +130,7 @@ def build_summary(db, days_ago: int = 0) -> dict:
         "date": start_ist.strftime("%Y-%m-%d"),
         "updated": now_ist.strftime("%H:%M"),
         "status": status,
+        "reason": reason,
         "line": line,
         "fetched": fetched,
         "scored": scored,
@@ -114,6 +143,7 @@ def build_summary(db, days_ago: int = 0) -> dict:
         "interviews_7d": interviews,
         "scraper": scraper,
         "applier": applier,
+        "applier_detail": health.get("detail", "") if applier_error else "",
         "alerts": [a["message"] for a in alerts.values()][:5],
     }
 
@@ -127,7 +157,8 @@ def summary_text(s: dict) -> str:
         f"Need you (apply by hand): {s['needs_you']} | failed: {s['failed']} | open questions: {s['open_questions']}",
         f"Interviews in next 7 days: {s['interviews_7d']}",
         f"Scraper: {s['scraper']} | Applier: {s['applier']}",
-    ] + ([f"Alerts: {'; '.join(s['alerts'])}"] if s["alerts"] else []))
+    ] + ([f"Applier error: {s['applier_detail']}"] if s.get("applier_detail") else [])
+      + ([f"Alerts: {'; '.join(s['alerts'])}"] if s["alerts"] else []))
 
 
 def history(db, days: int = 14) -> list[dict]:

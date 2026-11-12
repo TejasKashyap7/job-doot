@@ -119,7 +119,8 @@ function footer(w, d) {
   if (d.status === "green") {
     if (d.interviews_7d) msg += ` \u00B7 ${d.interviews_7d} interview${d.interviews_7d > 1 ? "s" : ""}`
   } else {
-    msg = d.scraper !== "healthy" ? `Scraper: ${d.scraper}` : `Applier: ${d.applier}`
+    // Server picks the most serious problem (reason); old logic kept for an older backend.
+    msg = d.reason || (d.scraper !== "healthy" ? `Scraper: ${d.scraper}` : `Applier: ${d.applier}`)
   }
   const t = f.addText(msg)
   t.font = Font.semiboldSystemFont(10)

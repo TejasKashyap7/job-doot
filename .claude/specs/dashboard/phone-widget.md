@@ -42,3 +42,33 @@ Every day 09:30 IST the scheduler creates a 15-min event on Tejas's personal Goo
 Calendar (same OAuth as interview events): title = the one-line summary
 (e.g. "📊 Fetched 12 · Applied 5 · Need you 2"), description = full breakdown,
 popup reminder at start so the phone notifies. Toggle: env DAILY_SUMMARY_EVENT=0 disables.
+
+## Applier errors on the widget (decided 2026-11-12, Tejas)
+Problem: on 11–12 Nov the applier was down for ~30h (Claude logged out on the Pi + every
+slot crashing at browser start) and the widget stayed **green** until the 26h "quiet"
+rule turned it yellow with no reason. Rule from now on: **any applier error shows on the
+widget at the next refresh, in plain words.**
+
+- The applier writes `data/applier/HEALTH.json` after every slot (atomic write):
+  `{"at", "result": "ok"|"crashed"|"claude_logged_out", "message" (short, fits the footer),
+  "detail" (first line of the real error), "streak" (same result in a row)}`.
+  - `crashed` — the slot raised before finishing (e.g. browser couldn't start/connect).
+  - `claude_logged_out` — a brain call failed with an auth error ("Failed to
+    authenticate", "OAuth session expired", "Not logged in", "Invalid API key",
+    "Please run /login"). The slot ends at once, the job is **not** logged as failed
+    (so it gets retried after the login is fixed), and one Telegram alert per day.
+  - `ok` — the slot finished (including "paused" / "no eligible jobs" / quota). Clears the error.
+- `/api/summary` reads it (read-only). Order of applier states: paused → Claude logged
+  out → crashed → quiet >26h → running. Logged out / crashed ⇒ status **red**.
+  Footer text (via the existing `Applier: <applier>`): `Applier: Claude logged out (Pi)`,
+  `Applier: crashed 19:43 (x8)`. New field `applier_detail` carries the real error;
+  the calendar/summary text includes it.
+- **`reason` field (server decides what the footer says).** The old footer logic was
+  "scraper not healthy → scraper text, else applier text", so a red applier error hid
+  behind a yellow "Scraper: collected 0 in 24h", and a yellow day caused only by open
+  questions showed "Applier: running". Now `/api/summary` returns `reason` = the most
+  serious problem, in this order: applier red (paused / Claude logged out / crashed) →
+  scraper red (sick / paused) → scraper yellow → applier quiet → "N questions to answer".
+  Empty when green. The widget shows `d.reason` (falls back to the old logic if the
+  field is missing). One-time re-paste of the widget script into Scriptable; after
+  that, new error types only need a backend change.
