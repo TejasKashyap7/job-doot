@@ -194,5 +194,7 @@ class Notification(Base):
     detail = Column(Text)                  # what happened (multi-line ok)
     fix = Column(Text)                     # what to do about it
     action_url = Column(String)
+    tag = Column(String)                   # problem tag key (services/problem_tags.py), applier rows
+    tech = Column(Text)                    # raw reason incl. logs, shown folded ("Technical details")
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     read_at = Column(DateTime)

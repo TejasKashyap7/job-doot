@@ -380,3 +380,58 @@ dialog h3 { margin: 0 0 4px; font-size: 18px; }
 .ntf__fix { margin: 6px 0 0; font-size: 13px; color: var(--amb); overflow-wrap: anywhere; }
 .ntf__fix b { font-weight: 700; }
 .ntf__link { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--red); }
+
+/* Problem tags on applier notifications — spec: notifications/approach.md "Problem tags" */
+.ntf__tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; color: var(--tx); background: var(--s3); border: 1px solid var(--line2);
+  text-decoration: none; white-space: nowrap; }
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--fa)); flex: none; }
+a.chip:hover { border-color: var(--c, var(--line2)); }
+.ntf__group { font-size: 11.5px; font-weight: 600; color: var(--fa); }
+.ntf__saw { margin: 6px 0 0; color: var(--mu); font-size: 13px; overflow-wrap: anywhere; }
+.ntf__saw b, .ntf__next b { color: var(--tx); font-weight: 600; }
+.ntf__next { margin: 6px 0 0; font-size: 13px; color: var(--mu); overflow-wrap: anywhere; }
+.ntf__tech { margin-top: 6px; font-size: 12px; color: var(--fa); }
+.ntf__tech summary { cursor: pointer; }
+.ntf__tech pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 11.5px ui-monospace, Menlo, monospace;
+  background: var(--s2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 6px 0 0; color: var(--mu); }
+
+/* /needs-you — spec: dashboard/needs-you.md. Charts in plain HTML: segmented bar + ranked bars. */
+.ny-range { display: flex; gap: 8px; margin: 0 0 12px; flex-wrap: wrap; }
+.ny-range__btn { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line2); color: var(--mu);
+  font-size: 13px; font-weight: 600; text-decoration: none; }
+.ny-range__btn.on { background: var(--s3); color: var(--tx); }
+.ny-overview h2, .ny-sec h3 { margin: 0 0 10px; font-size: 15px; }
+.ny-sec h3 { margin-top: 14px; color: var(--mu); font-size: 13px; font-weight: 700; }
+.segbar { display: flex; gap: 2px; height: 34px; border-radius: 8px; overflow: hidden; }
+.segbar__part { background: var(--c); display: grid; place-items: center; min-width: 4px; text-decoration: none; }
+.segbar__part span { color: #fff; font-size: 12px; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,.55); }
+.segbar__part:hover { filter: brightness(1.15); }
+.ny-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+.ny-table th { text-align: left; color: var(--fa); font-weight: 600; padding: 4px 0; }
+.ny-table td { padding: 6px 0; border-top: 1px solid var(--line); color: var(--mu); }
+.ny-table td:not(:first-child), .ny-table th:not(:first-child) { text-align: right; width: 64px; }
+.ny-sections { display: grid; gap: 12px; margin-top: 12px; }
+@media (min-width: 900px) { .ny-sections { grid-template-columns: 1fr 1fr; align-items: start; } }
+.ny-sec__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ny-sec__n { color: var(--mu); font-size: 13px; font-weight: 600; }
+.ny-sec__means, .ny-sec__next { margin: 10px 0 0; font-size: 13.5px; color: var(--mu); }
+.ny-sec__means b, .ny-sec__next b { color: var(--tx); font-weight: 600; }
+.hbars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.hbars li { display: grid; grid-template-columns: minmax(0, 9.5em) minmax(0, 1fr) 2.2em; align-items: center; gap: 8px; font-size: 12.5px; }
+.hbars__name { color: var(--mu); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbars__track { height: 12px; }
+.hbars__bar { display: block; height: 100%; min-width: 3px; background: var(--c); border-radius: 0 4px 4px 0; }
+.hbars li:hover .hbars__bar { filter: brightness(1.2); }
+.hbars__n { color: var(--tx); font-weight: 700; text-align: right; }
+.ny-jobs { margin-top: 14px; font-size: 13px; }
+.ny-jobs summary { cursor: pointer; color: var(--mu); font-weight: 600; }
+.ny-jobs ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 10px; }
+.ny-jobs li { border-top: 1px solid var(--line); padding-top: 8px; }
+.ny-jobs__top { display: flex; justify-content: space-between; gap: 8px; }
+.ny-jobs__top time { color: var(--fa); font-size: 12px; }
+.ny-jobs__role { color: var(--mu); }
+.ny-jobs__why { color: var(--fa); margin-top: 3px; }
+.ny-jobs a { color: var(--red); font-weight: 700; font-size: 12.5px; }
+.hrow--link { text-decoration: none; color: inherit; } .hrow--link:hover span { color: var(--tx); }

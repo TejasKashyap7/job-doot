@@ -16,12 +16,26 @@
   <article class="ntf ntf--{{ n.level }}{{ ' ntf--unread' if not n.read_at else '' }}">
     <span class="ntf__dot" aria-hidden="true"></span>
     <div class="ntf__body">
+      {% if n.t %}
+      <div class="ntf__tags">
+        {% if n.key == 'applier_needs_you' %}<a class="chip" href="/needs-you#{{ n.t.key }}" style="--c: {{ n.t.color }}">{{ n.t.label }}</a>
+        {% else %}<span class="chip" style="--c: {{ n.t.color }}">{{ n.t.label }}</span>{% endif %}
+        <span class="ntf__group">{{ n.group }}</span>
+      </div>
+      {% endif %}
       <div class="ntf__top">
         <strong class="ntf__title">{{ n.title }}</strong>
         <time class="ntf__time" title="{{ n.local }}">{{ n.ago }}</time>
       </div>
-      {% if n.detail %}<p class="ntf__detail">{{ n.detail }}</p>{% endif %}
-      {% if n.fix %}<p class="ntf__fix"><b>What to do:</b> {{ n.fix }}</p>{% endif %}
+      {% if n.t %}
+        <p class="ntf__detail">{{ n.t.means }}</p>
+        {% if n.detail %}<p class="ntf__saw"><b>What Claude saw:</b> {{ n.detail }}</p>{% endif %}
+        {% if n.fix %}<p class="ntf__next"><b>What happens next:</b> {{ n.fix }}</p>{% endif %}
+        {% if n.tech %}<details class="ntf__tech"><summary>Technical details</summary><pre>{{ n.tech }}</pre></details>{% endif %}
+      {% else %}
+        {% if n.detail %}<p class="ntf__detail">{{ n.detail }}</p>{% endif %}
+        {% if n.fix %}<p class="ntf__fix"><b>What to do:</b> {{ n.fix }}</p>{% endif %}
+      {% endif %}
       {% if n.action_url %}<a class="ntf__link" href="{{ n.action_url }}"{% if n.action_url.startswith('http') %} target="_blank" rel="noopener"{% endif %}>{{ 'Update cookie' if n.action_url == '/admin/linkedin-cookie' else 'Open job' }} &rarr;</a>{% endif %}
     </div>
   </article>

@@ -53,6 +53,10 @@ def _ensure_columns():
         "jobs": {
             "apply_type": "VARCHAR",
         },
+        "notifications": {
+            "tag": "VARCHAR",
+            "tech": "TEXT",
+        },
         "resumes": {
             "similarity_to_master": "FLOAT",
             "jd_skill_coverage": "FLOAT",

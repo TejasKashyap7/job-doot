@@ -15,6 +15,7 @@ from sqlalchemy import or_
 
 from database.db import SessionLocal
 from database.models import Notification
+from services.problem_tags import TAGS, classify, clean_why, plain_reason, tag_info, url_of
 
 log = logging.getLogger(__name__)
 
@@ -26,11 +27,13 @@ OWNER_USER_ID = int(os.getenv("SUMMARY_USER_ID", "1"))
 # ---------- write ----------
 
 def notify(user_id: int | None, key: str, level: str, title: str,
-           detail: str = "", fix: str = "", action_url: str | None = None) -> None:
+           detail: str = "", fix: str = "", action_url: str | None = None,
+           tag: str | None = None, tech: str | None = None) -> None:
     db = SessionLocal()
     try:
         db.add(Notification(user_id=user_id, key=key, level=level, title=title[:300],
-                            detail=detail or None, fix=fix or None, action_url=action_url))
+                            detail=detail or None, fix=fix or None, action_url=action_url,
+                            tag=tag, tech=tech or None))
         db.flush()
         # prune: keep the newest KEEP_PER_AUDIENCE for this audience
         q = db.query(Notification.id).filter(
@@ -86,72 +89,30 @@ def clear_all(db, user) -> None:
 # The applier runs on the Pi host (~/job-doot-applier) and is NOT modified; we read its
 # mounted data dir and turn new rows / pause-flag flips into notifications.
 
-_SCRIPT = ("A fixed script (not the AI) was deciding where to click. Haiku never saw the whole "
-           "page — it only got the boxes the script picked — so nothing could notice what was "
-           "really on the screen and react. ")
-_REASONS = {
-    "offsite_no_submit_button": _SCRIPT + "Here the script took the site's job-search bar for the "
-        "application form, never pressed the 'Apply' button to open the real form, and then "
-        "couldn't find a Submit button.",
-    "offsite_stuck": _SCRIPT + "The company form refused the answers (something required was "
-        "missing or in the wrong format) and the script could not see what the form wanted.",
-    "stuck": _SCRIPT + "The LinkedIn form would not go to the next page — some answer was "
-        "missing or not accepted — and the script couldn't tell which one.",
-    "too_many_steps": _SCRIPT + "The form kept going past the script's page limit, so it stopped.",
-    "no_primary_button": _SCRIPT + "It couldn't find the Next / Submit button in the form.",
-    "offsite_too_many_pages": _SCRIPT + "The company site kept going past the script's page limit.",
-    "brain": "Claude (the AI that answers the form questions) returned an error, so the "
-             "application was stopped.",
-    "site": "Haiku looked at the page and gave up. In its own words:",
-    "crash": "The applier program itself crashed on this job (a bug, not the website).",
-    "modal_missing": "The LinkedIn Easy Apply window didn't open.",
-}
+APPLIER_KEYS = ("applier_failed", "applier_needs_you")
+GROUP = {"applier_failed": "Couldn't apply", "applier_needs_you": "Needs you"}
 
 
-def _human_reason(detail: str) -> tuple[str, str | None]:
-    """'offsite_stuck:msg | url' -> (plain-language explanation, url)"""
-    detail = detail or ""
-    url = None
-    if " | " in detail:
-        detail, url = detail.rsplit(" | ", 1)
-    code, _, extra = detail.partition(":")
-    code, extra = code.strip(), extra.strip()
-    text = _REASONS.get(code, code or "unknown error")
-    if extra:
-        if "weekly limit" in extra or "429" in extra:
-            extra = "Claude's weekly usage limit was reached"
-        if code == "site":
-            text += f" \u201c{extra[:600]}\u201d"
-        elif code not in ("offsite_stuck", "stuck"):   # those raw messages add nothing
-            text += f" ({extra[:200]})"
-    return text, (url if url and url.startswith("http") else None)
+def _tag_value(detail: str) -> str:
+    """Stored tag: the key, or "new:<Label as Claude wrote it>" for a new kind."""
+    key, label = classify(detail)
+    return f"new:{label}" if key.startswith("new:") else key
 
 
-_NEEDS_YOU = {
-    "account / sign-in required": "The company site asks you to sign in or create an account "
-        "before you can apply. The applier isn't allowed to create accounts yet, so it stopped "
-        "here and moved on to the next job.",
-    "account-based ATS": "This company uses an application system that needs an account "
-        "(Workday, SuccessFactors, Taleo…). The applier isn't allowed to create accounts yet.",
-    "payment page": "The site asked for card / payment details. The applier never pays for anything.",
-    "no application form found": "The applier couldn't find an application form on the company site.",
-}
+def _title(title: str | None, company: str | None) -> str:
+    role = (title or "").strip()
+    role = role if len(role) <= 60 else role[:58].rstrip() + "\u2026"
+    return " \u2014 ".join(x for x in (company, role) if x) or "a job"
 
 
-def _needs_you_text(detail: str) -> tuple[str, str | None]:
-    """'needs_human:<why> | <url>' -> (plain explanation, url)"""
-    why = detail.split(":", 1)[1] if ":" in detail else detail
-    url = None
-    if " | " in why:
-        why, url = why.rsplit(" | ", 1)
-    why = why.strip()
-    if why.startswith("captcha"):
-        text = (f"The site showed a CAPTCHA ({why[len('captcha'):].strip(' ()') or 'a robot check'}). "
-                "The applier never solves CAPTCHAs, so it left this one for you.")
-    else:
-        text = _NEEDS_YOU.get(why, why)
-    text += " Open the job and apply by hand if you want it."
-    return text, (url.strip() if url and url.strip().startswith("http") else None)
+def applier_event(status: str, detail: str, title: str | None, company: str | None,
+                  url: str | None) -> dict:
+    """Everything a bell row needs for one failed / needs-you attempt (spec: wording rules)."""
+    tag = _tag_value(detail)
+    info = tag_info(tag.lower() if tag.startswith("new:") else tag, tag.removeprefix("new:"))
+    return {"key": "applier_needs_you" if detail.startswith("needs_human:") else "applier_failed",
+            "title": _title(title, company), "detail": plain_reason(detail), "fix": info.next,
+            "action_url": url_of(detail) or url, "tag": tag, "tech": detail}
 
 
 def _state_path() -> Path:
@@ -212,19 +173,12 @@ def _watch_applier() -> None:
     if not first_run:
         for _id, st, detail, title, company, url in rows:
             detail = detail or ""
-            if st == "failed":
-                why, link = _human_reason(detail)
-                notify(OWNER_USER_ID, "applier_failed", "warning",
-                       f"Couldn't apply: {_where(title, company)}", detail=f"What happened: {why}",
-                       action_url=link or url)
-            elif detail.startswith("needs_human:"):
-                text, link = _needs_you_text(detail)
-                notify(OWNER_USER_ID, "applier_needs_you", "warning",
-                       f"Needs you: {_where(title, company)}",
-                       detail=f"What happened: {text}", action_url=link or url)
+            if st == "failed" or detail.startswith("needs_human:"):
+                ev = applier_event(st, detail, title, company, url)
+                notify(OWNER_USER_ID, ev.pop("key"), "warning", ev.pop("title"), **ev)
 
     if paused and (first_run or not was_paused):
-        reasons = [_human_reason(d)[0] for d, t, co in recent_fail]
+        reasons = [tag_info(*classify(d or "")).label for d, t, co in recent_fail]
         lines = [f"• {_where(t, co)}" for d, t, co in recent_fail]
         # same explanation for every job? say it once
         if reasons and len(set(reasons)) == 1:
@@ -240,3 +194,53 @@ def _watch_applier() -> None:
                detail="The pause flag was cleared; applying continues at the next slot.")
 
     _save_state({"last_attempt_id": max_id, "paused": paused})
+
+
+# ---------- one-time backfill: tag + re-word existing applier notifications ----------
+
+_OLD_WRAPPERS = ("What happened: ", "Haiku looked at the page and gave up. In its own words: ")
+_OLD_TAILS = (" Open the job and apply by hand if you want it.",)
+_OLD_FIXED = ("The company site asks you to sign in", "This company uses an application system",
+              "The site showed a CAPTCHA", "The site asked for card", "The applier couldn't find",
+              "A fixed script (not the AI)", "Claude (the AI that answers", "The applier program itself",
+              "The LinkedIn Easy Apply window")
+
+
+def _old_title(title: str) -> str:
+    for pre in ("Couldn't apply: ", "Needs you: "):
+        if title.startswith(pre):
+            role, _, company = title[len(pre):].rpartition(" @ ")
+            return _title(role or None, company or None) if role else title[len(pre):]
+    return title
+
+
+def backfill_tags() -> int:
+    """Idempotent: only rows with tag IS NULL. Spec: notifications/approach.md (problem tags)."""
+    db = SessionLocal()
+    n = 0
+    try:
+        rows = db.query(Notification).filter(Notification.key.in_(APPLIER_KEYS),
+                                             Notification.tag.is_(None)).all()
+        for r in rows:
+            raw = r.detail or ""
+            text = raw
+            for w in _OLD_WRAPPERS:
+                text = text.replace(w, "", 1)
+            for t in _OLD_TAILS:
+                text = text.replace(t, "")
+            text = text.strip().strip("“”").strip()
+            prefix = "needs_human:" if r.key == "applier_needs_you" else ""
+            tag = _tag_value(prefix + text)
+            r.tag = tag
+            r.tech = raw or None
+            r.title = _old_title(r.title or "")
+            r.detail = "" if text.startswith(_OLD_FIXED) else clean_why(text)
+            r.fix = tag_info(tag.lower() if tag.startswith("new:") else tag, tag.removeprefix("new:")).next
+            n += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        log.exception("notification tag backfill failed")
+    finally:
+        db.close()
+    return n

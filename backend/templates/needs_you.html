@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% set nav = "today" %}
+{% from "_ui.html" import page_head with context %}
+{% block title %}Needs you · job-doot{% endblock %}
+{# Spec: .claude/specs/dashboard/needs-you.md #}
+{% block body %}
+{{ page_head("Needs you", sub=(d.total ~ " jobs the applier couldn't finish on its own")) }}
+
+<nav class="ny-range" aria-label="Time range">
+  {% for v, name in [(7, "7 days"), (30, "30 days"), (0, "All")] %}
+  <a href="/needs-you?days={{ v }}" class="ny-range__btn{{ ' on' if d.days == v else '' }}">{{ name }}</a>
+  {% endfor %}
+</nav>
+
+{% if not d.total %}
+  <p class="empty">Nothing here for this period. The applier didn't need you.</p>
+{% else %}
+<section class="card ny-overview">
+  <h2>What stopped it</h2>
+  <div class="segbar" role="img" aria-label="{% for p in d.parts %}{{ p.label }} {{ p.n }}{{ ', ' if not loop.last }}{% endfor %}">
+    {% for p in d.parts %}
+    <a class="segbar__part" href="#{{ p.key }}" style="flex: {{ p.n }} 1 0; --c: {{ p.color }}"
+       title="{{ p.label }}: {{ p.n }} ({{ '%.0f'|format(p.pct) }}%)">{% if p.pct >= 9 %}<span>{{ '%.0f'|format(p.pct) }}%</span>{% endif %}</a>
+    {% endfor %}
+  </div>
+  <table class="ny-table">
+    <thead><tr><th>Problem</th><th>Jobs</th><th>Share</th></tr></thead>
+    <tbody>
+    {% for s in d.sections %}
+      <tr><td><a href="#{{ s.key }}" class="chip" style="--c: {{ s.color }}">{{ s.label }}</a></td>
+          <td>{{ s.n }}</td><td>{{ s.share }}%</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<div class="ny-sections">
+{% for s in d.sections %}
+<section class="card ny-sec" id="{{ s.key }}">
+  <div class="ny-sec__head">
+    <span class="chip" style="--c: {{ s.color }}">{{ s.label }}</span>
+    <span class="ny-sec__n">{{ s.n }} job{{ 's' if s.n != 1 }} · {{ s.share }}%</span>
+  </div>
+  <p class="ny-sec__means"><b>What this means:</b> {{ s.means }}</p>
+  <p class="ny-sec__next"><b>What happens next:</b> {{ s.next }}</p>
+
+  <h3>By company</h3>
+  <ol class="hbars">
+    {% for b in s.companies %}
+    <li title="{{ b.name }}: {{ b.n }}"><span class="hbars__name">{{ b.name }}</span>
+      <span class="hbars__track"><span class="hbars__bar" style="width: {{ b.pct }}%; --c: {{ '#8a8486' if b.other else s.color }}"></span></span>
+      <span class="hbars__n">{{ b.n }}</span></li>
+    {% endfor %}
+  </ol>
+
+  {% if s.sites %}
+  <h3>By website / hiring system</h3>
+  <ol class="hbars">
+    {% for b in s.sites %}
+    <li title="{{ b.name }}: {{ b.n }}"><span class="hbars__name">{{ b.name }}</span>
+      <span class="hbars__track"><span class="hbars__bar" style="width: {{ b.pct }}%; --c: {{ '#8a8486' if b.other else s.color }}"></span></span>
+      <span class="hbars__n">{{ b.n }}</span></li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+
+  <details class="ny-jobs">
+    <summary>Show the {{ s.n }} job{{ 's' if s.n != 1 }}</summary>
+    <ul>
+      {% for j in s.jobs %}
+      <li>
+        <div class="ny-jobs__top"><b>{{ j.company or "Unknown" }}</b><time>{{ j.day }}</time></div>
+        <div class="ny-jobs__role">{{ j.title }}</div>
+        {% if j.reason %}<div class="ny-jobs__why">{{ j.reason }}</div>{% endif %}
+        {% if j.link %}<a href="{{ j.link }}" target="_blank" rel="noopener">Open job &rarr;</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+</section>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

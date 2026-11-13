@@ -26,6 +26,7 @@ from services.auth import (
 from services.profile_import import parse_profile_export, ProfileImportError
 import services.alerts as alerts_svc
 import services.notifications as notif_svc
+import services.problem_tags as problem_tags
 from services.scraper import save_li_at, has_li_at
 from services.watcher_health import watcher_status
 from agents.scorer import score_job_for_user, score_pending
@@ -68,6 +69,7 @@ scheduler = None
 async def lifespan(_: FastAPI):
     global scheduler
     init_db()
+    notif_svc.backfill_tags()   # one-time re-tag/re-word of old applier rows (idempotent)
     db = SessionLocal()
     try:
         stuck = (
@@ -583,6 +585,11 @@ def notifications_page(request: Request, current_user: User = Depends(require_lo
         n.ago = ("just now" if mins < 1 else f"{mins} min ago" if mins < 60
                  else f"{mins // 60} h ago" if mins < 1440 else f"{mins // 1440} d ago")
         n.local = n.created_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(IST).strftime("%a %-d %b, %-I:%M %p")
+        n.t = None
+        if n.tag:   # applier problem: chip + plain "what this means" (spec: problem tags)
+            n.t = problem_tags.tag_info(n.tag.lower() if n.tag.startswith("new:") else n.tag,
+                                        n.tag.removeprefix("new:"))
+            n.group = notif_svc.GROUP.get(n.key, "")
     return templates.TemplateResponse("notifications.html", {
         "request": request, "current_user": current_user, "items": items,
     })
@@ -702,6 +709,19 @@ def dashboard(request: Request, current_user: User = Depends(require_login), db:
         "sources": _sources_status(),
         "filters": {"min_score": min_score, "status": status, "q": q, "review": review, "date": date},
         "score_class": _score_class,
+    })
+
+
+@app.get("/needs-you", response_class=HTMLResponse)
+def needs_you_view(request: Request, current_user: User = Depends(require_login), days: int = 0):
+    """Jobs the applier parked as "needs you", grouped by problem tag.
+    Spec: .claude/specs/dashboard/needs-you.md. The applier applies for the owner only."""
+    from services.needs_you import build
+    owner = int(os.getenv("SUMMARY_USER_ID", "1"))
+    d = build(days) if (current_user.is_admin or current_user.id == owner) else \
+        {"total": 0, "days": days, "parts": [], "sections": []}
+    return templates.TemplateResponse("needs_you.html", {
+        "request": request, "current_user": current_user, "d": d,
     })
 
 

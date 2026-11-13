@@ -117,3 +117,36 @@ non-technical reader — not an error code.
   written in 1–3 simple sentences: what it saw, what it tried, why it stopped
   (apply-agent spec). Shown in full, not cut to 160 chars.
 - The pause notification lists each of the last failures with that explanation.
+
+## Problem tags + plain wording (decided 2026-11-13, Tejas)
+**Why:** the bell's applier rows were unreadable at a glance: "Couldn't apply: <long title> @ <co>"
+then "What happened: Haiku looked at the page and gave up. In its own words: '... check 22 failed:
+Locator.scroll_into_view_if_needed: Timeout 29994ms exceeded. Call log: ...'". You couldn't tell
+the KIND of problem, and the text mixed AI jargon with raw Playwright logs.
+
+**Tags.** Every applier notification gets one problem tag, shown as a coloured chip before the
+title. One classifier (`backend/services/problem_tags.py`) is used by the bell AND the Needs-you
+page, so the two always agree. Order: rules on the reason text/URL → else the tag Claude wrote
+(see applier `approach.md` "Problem tag from Claude") → else "Other".
+- Needs you: Account / sign-in wall · Email verification code · CAPTCHA · Payment page ·
+  Profile doesn't fit · Wrong page / no form · Maybe already applied.
+- Couldn't apply: Page stuck · Form field won't fill · Led away from the job · Profile doesn't fit
+  · Claude logged out · Claude usage limit · Claude error · Applier bug · Old script (retired).
+- **New kinds**: if no rule matches and Claude gave a short label, that label IS the tag (a new
+  tag appears by itself). Nothing matches and no label → "Other".
+
+**Wording rules (each applier notification):**
+1. Title = "<Company> — <Role>" (role cut to ~60 chars). The group ("Needs you" / "Couldn't apply")
+   is a small label beside the chip; no "Couldn't apply:" prefix in the title.
+2. Line 1 = the tag's one-sentence plain explanation (same text as the Needs-you page).
+3. Line 2 = what Claude saw, cleaned: no "Haiku", no element numbers ("[23]", "check 22"), no
+   Playwright/Python logs ("Locator…", "Timeout 29994ms", "Call log", tracebacks), no "Last
+   things I did:" step dump. Max ~280 chars.
+4. "What happens next" line from the tag (e.g. "Nothing to do — it moved on to the next job.
+   Account creation comes with the real-account phase."). Never "apply by hand" (full autonomy).
+5. The raw text (logs and all) stays available under a collapsed "Technical details".
+6. Needs-you chips link to that tag's section on `/needs-you`.
+
+**Storage:** `notifications` gains `tag` (key) and `tech` (raw text) columns
+(`_ensure_columns`). A one-time, idempotent backfill on startup re-tags and re-words existing
+applier notifications (rows with `tag IS NULL` and key applier_failed / applier_needs_you).
