@@ -7,13 +7,13 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>{% block title %}job-doot{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css?v=9">
+  <link rel="stylesheet" href="/static/style.css?v=10">
 </head>
 <body>
 {# Look: .claude/specs/dashboard/ui-redesign-night.md ("A · Night rings") #}
 {% from "_ui.html" import icon %}
 {% set authed = current_user is defined and current_user %}
-{% set nav_items = [("today", "/", "Today"), ("jobs", "/jobs", "Jobs"), ("insights", "/insights", "Insights"), ("archive", "/archive", "Archive")] %}
+{% set nav_items = [("today", "/", "Today"), ("jobs", "/jobs", "Jobs"), ("insights", "/insights", "Insights"), ("blockers", "/needs-you", "Blockers")] %}
 {% if authed and current_user.is_admin %}{% set nav_items = nav_items + [("admin", "/admin", "Admin")] %}{% endif %}
 
 {% if authed %}

@@ -77,6 +77,13 @@ def build(days: int = 0) -> dict:
     tail = sections[OVERVIEW_PARTS:]
     if tail:
         parts.append({"label": "Other", "n": sum(s["n"] for s in tail), "color": GREY, "key": ""})
+    start = 0.0
     for p in parts:
         p["pct"] = 100 * p["n"] / total if total else 0
+        # donut slice on a circle whose circumference is 100: dash = share (minus a 2px-ish gap),
+        # offset rotates it to start where the previous slice ended (12 o'clock first)
+        gap = 0.8 if len(parts) > 1 else 0
+        p["dash"] = max(p["pct"] - gap, 0.3)
+        p["offset"] = 25 - start
+        start += p["pct"]
     return {"total": total, "days": days, "parts": parts, "sections": sections}

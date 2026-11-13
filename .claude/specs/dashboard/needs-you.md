@@ -3,6 +3,10 @@
 Decided 2026-11-13 (Tejas). Route `/needs-you`, linked from the Today card's "Need you"
 number and from every Needs-you chip in the bell.
 
+**Navigation (Tejas, 2026-11-13):** the page is its own tab, **"Blockers"**, replacing
+"Archive" in the bottom tab bar (phone) and the left rail (desktop). Archive is still one tap
+away via the "Applied" chip on Jobs (and Archive highlights the Jobs tab).
+
 ## Data
 `data/applier/applier.db` → `attempts` with `detail LIKE 'needs_human:%'` (read-only), owner's
 applier. Each row is tagged with the shared classifier (`services/problem_tags.py`, same tags as
@@ -10,8 +14,8 @@ the bell). Range filter in one row at the top: 7 days · 30 days · All (default
 
 ## Layout (phone first, one column; >= 900px two columns for the sections)
 1. **Header**: total count + range filter.
-2. **Overview**: one tall segmented bar of the split by tag (<= 6 parts, tail folded into
-   "Other"), share printed on each block where it fits, legend of names below.
+2. **Overview**: a donut of the split by tag (<= 6 slices, tail folded into "Other"), total in
+   the centre; the table below it is the legend.
    Then a small table: tag · count · share (the table view, a11y).
 3. **One section per tag**, largest first, anchor `#<tag key>`:
    - tag chip + count;
@@ -23,10 +27,12 @@ the bell). Range filter in one row at the top: 7 days · 30 days · All (default
      ranked bars — this is what decides how account automation gets built later;
    - collapsible list of the jobs: date · company · role · link.
 
-## Form choice (dataviz skill, 2026-11-13)
-Tejas asked for pie charts. Used instead: the overview as a **tall segmented bar** (one whole,
-<= 6 parts, read at a glance) and per-company **ranked horizontal bars** (20+ companies; a pie
-can't show that many slices readably). Easy to switch to pies if Tejas prefers after seeing it.
+## Form choice
+Overview = **pie (donut)**, Tejas's explicit choice (2026-11-13, after first seeing a segmented
+bar): <= 6 slices + "Other", 2px gaps between slices, total in the centre, hover title per slice.
+The table right under it is the legend (colour chip · name · count · share), so identity is never
+colour-alone; no separate side legend (it truncated names on phones and repeated the table).
+Per-company breakdown stays **ranked horizontal bars** (20+ companies can't be read as slices).
 
 ## Colours
 Fixed per tag (never by rank), from the validated dark categorical palette (passes all checks on

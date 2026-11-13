@@ -15,7 +15,7 @@ one product.
 
 ## Layout
 - **Phone first.** < 900px: one column, frosted bottom tab bar (Today, Jobs, Insights,
-  Archive, Admin — Admin only for admins), safe-area insets respected. ≥ 900px: left rail
+  Blockers (was Archive until 2026-11-13, see needs-you.md), Admin — Admin only for admins), safe-area insets respected. ≥ 900px: left rail
   with the same items + username + sign out; content in up to 2 columns.
 - No table ever makes the page scroll sideways. Job lists are cards on every screen size.
   Admin tables may scroll inside their own box.
