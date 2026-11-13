@@ -35,6 +35,20 @@ CREATE TABLE IF NOT EXISTS qa_bank (
     answered_at TEXT,
     UNIQUE(applicant, question)
 );
+-- LinkedIn account health (approach.md "LinkedIn account health check")
+CREATE TABLE IF NOT EXISTS account_checks (
+    id INTEGER PRIMARY KEY,
+    checked_at TEXT NOT NULL,
+    day TEXT NOT NULL,
+    status TEXT NOT NULL,          -- ok|note|warning|error
+    signals TEXT,
+    applied_today INTEGER,
+    views_today INTEGER
+);
+CREATE TABLE IF NOT EXISTS daily_activity (
+    day TEXT PRIMARY KEY,          -- local date
+    views INTEGER NOT NULL DEFAULT 0
+);
 """
 
 # Statuses (detail prefix) that mean "never try this job again".
@@ -159,6 +173,24 @@ def applied_since(conn, applicant, since_local_iso: str) -> int:
     return conn.execute(
         "SELECT count(*) FROM attempts WHERE applicant=? AND status='applied' AND created_at>=?",
         (applicant, since_local_iso)).fetchone()[0]
+
+
+def add_views(conn, day: str, n: int) -> None:
+    if n <= 0:
+        return
+    conn.execute("INSERT INTO daily_activity(day, views) VALUES (?, ?) "
+                 "ON CONFLICT(day) DO UPDATE SET views = views + excluded.views", (day, n))
+    conn.commit()
+
+
+def record_account_check(conn, status: str, signals: list[str], applicant: str, day: str) -> None:
+    applied = applied_since(conn, applicant, f"{day}T00:00:00")
+    row = conn.execute("SELECT views FROM daily_activity WHERE day=?", (day,)).fetchone()
+    conn.execute(
+        "INSERT INTO account_checks(checked_at, day, status, signals, applied_today, views_today)"
+        " VALUES (?,?,?,?,?,?)",
+        (now(), day, status, "; ".join(signals)[:1000], applied, row[0] if row else 0))
+    conn.commit()
 
 
 def day_summary(conn, applicant, hours=24) -> dict:

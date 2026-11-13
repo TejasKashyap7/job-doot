@@ -415,3 +415,33 @@ from the job) — use one of those exactly if it fits, otherwise invent a short 
 applier stores it in front of the reason: `needs_human:[<tag>] <why> | <url>`,
 `site:[<tag>] <why> | <url>`. The backend's rules still decide first; Claude's tag is used when
 no rule matches, so a genuinely new kind of problem shows up as its own new tag.
+
+## LinkedIn account health check (decided 2026-11-13, Tejas)
+Goal: know early if the account is at risk of a ban, and find the safe daily volume before
+Tejas's real account goes live. Tejas wants ONLY ban-risk checks (other go-live work: fix on
+the go). Strictly read-only: it opens pages, never clicks / types / applies.
+
+**When:** twice a day as daemon events — morning (random 08:30–08:55, before the first slot)
+and evening (random 22:50–23:15, after the sweep). Random minute so it isn't a fixed clock.
+
+**What it looks at (in the applier's own Chromium session):**
+1. `linkedin.com/feed/` — redirected to `/checkpoint`, `/authwall`, `/login`, `/uas/` ⇒ logged
+   out or challenged. LinkedIn's own banners (`role=alert`, global-alert bars) are read for
+   restriction / verification / limit wording. Post text in the feed is NOT scanned (other
+   people's posts would cause false alarms).
+2. `linkedin.com/notifications/` — notification cards scanned for account-level wording
+   ("your account has been restricted", "unusual activity on your account", "verify your
+   identity", "temporarily restricted", "commercial use limit", "easy apply limit"…).
+
+**Results:** `ok` · `warning` (strong signal: checkpoint/login wall, restriction, verification,
+limit reached) · `note` (weaker hint, e.g. a security notification) · `error` (check couldn't
+run). Stored in applier.db `account_checks` with that day's applications and job pages opened.
+- `warning` ⇒ `safety.pause("linkedin:<signal>")` (all applying stops; the bell + widget turn
+  red through the existing pause path) + one Telegram message.
+- `note` ⇒ recorded + one Telegram message; applying continues.
+
+**Volume log:** `daily_activity(day, views)` — job pages opened per day, added at the end of
+every slot (applications per day come from `attempts`). The dashboard's "LinkedIn safety" card
+shows: last check result + time, clean days in a row, today's applications / pages opened,
+and the **highest daily volume with no warning that day or the next** = the proven-safe ceiling.
+Backend side: `dashboard/approach.md` → "LinkedIn safety card".

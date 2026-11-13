@@ -26,7 +26,9 @@ DEFAULTS = {
     "daily_target": None,
     "sweep_time": "22:00",        # last catch-up slot of the day (daily_target only)
     "sweep_max_views": 150,
-    "test_mode": False,           # True => made-up answers for unknown questions
+    "test_mode": False,
+    # read-only LinkedIn account health check, twice a day (approach.md); random time in each window
+    "health_check_windows": [["08:30", "08:55"], ["22:50", "23:15"]],           # True => made-up answers for unknown questions
     "claude_bin": "~/.local/bin/claude",
     "models": {"primary": "haiku", "retry": "sonnet"},
 }

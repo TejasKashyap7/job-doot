@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from zoneinfo import ZoneInfo
 
-from . import backend, health, notify, safety, store
+from . import account_health, backend, health, notify, safety, store
 from .browser import Session
 from .config import DATA, load_profile
 from .easy_apply import apply_to_job
@@ -141,6 +141,7 @@ def run_slot(cfg, max_apply: int | None = None, max_views: int | None = None) ->
                     break
             if applied < target and views < view_cap:
                 pause(120, 360) if status == "applied" else pause(20, 60)
+    store.add_views(conn, datetime.now().strftime("%Y-%m-%d"), views)   # LinkedIn safety volume log
     log.info("Slot done: %d applied, %d pages viewed", applied, views)
 
 
@@ -223,6 +224,12 @@ def daemon(cfg):
         slots = [t for t in plan_day(cfg, now.date()) if t > now]
         digest = datetime(now.year, now.month, now.day, dh, dm, tzinfo=tz)
         events = [(t, "slot") for t in slots] + ([(digest, "digest")] if digest > now else [])
+        for lo, hi in cfg["health_check_windows"]:   # read-only LinkedIn account check
+            t0 = datetime.combine(now.date(), datetime.strptime(lo, "%H:%M").time(), tz)
+            t1 = datetime.combine(now.date(), datetime.strptime(hi, "%H:%M").time(), tz)
+            t = t0 + timedelta(seconds=random.randint(0, max(0, int((t1 - t0).total_seconds()))))
+            if t > now:
+                events.append((t, "check"))
         if cfg.get("daily_target") == "fetched":
             sh, sm = map(int, cfg["sweep_time"].split(":"))
             sweep = datetime(now.year, now.month, now.day, sh, sm, tzinfo=tz)
@@ -236,7 +243,7 @@ def daemon(cfg):
                 time.sleep(wait)
             try:
                 if kind in ("slot", "sweep"):
-                    n, views = slot_size(cfg, kind, sum(k != "digest" for _, k in events[i:]))
+                    n, views = slot_size(cfg, kind, sum(k in ("slot", "sweep") for _, k in events[i:]))
                     if n == 0:
                         log.info("Today's target already met — skipping %s", kind)
                         continue
@@ -244,6 +251,8 @@ def daemon(cfg):
                     run_slot(cfg, n, views)
                     if health.writes == before:  # slot didn't report an error itself
                         health.record(health.OK)
+                elif kind == "check":
+                    account_health.run_check(cfg)
                 else:
                     send_digest(cfg)
             except Exception as exc:
@@ -263,7 +272,7 @@ def daemon(cfg):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["once", "daemon", "status", "qa", "answer", "resume", "look", "try"])
+    ap.add_argument("cmd", choices=["once", "daemon", "status", "qa", "answer", "resume", "look", "try", "check"])
     ap.add_argument("--profile", default="vishal")
     ap.add_argument("--max", type=int)
     ap.add_argument("--url")
@@ -278,6 +287,8 @@ def main():
     cfg = load_profile(a.profile)
     if a.cmd == "once":
         run_slot(cfg, a.max)
+    elif a.cmd == "check":
+        print(account_health.run_check(cfg))
     elif a.cmd == "daemon":
         daemon(cfg)
     elif a.cmd == "status":
