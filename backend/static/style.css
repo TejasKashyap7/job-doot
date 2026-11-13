@@ -450,3 +450,14 @@ a.chip:hover { border-color: var(--c, var(--line2)); }
 .pie__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pie__legend b { color: var(--tx); font-weight: 700; }
 .pie__legend em { font-style: normal; color: var(--fa); text-align: right; }
+/* LinkedIn safety card on Today — spec: dashboard/approach.md "LinkedIn safety card" */
+.lis__top { display: flex; align-items: center; gap: 8px; }
+.lis__top em { margin-left: auto; color: var(--fa); font-style: normal; font-size: 12px; }
+.lis__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--fa); flex: none; }
+.lis--ok .lis__dot { background: var(--ok); } .lis--note .lis__dot { background: var(--amb); }
+.lis--warning .lis__dot { background: var(--bad); } .lis--error .lis__dot { background: var(--amb); }
+.lis--warning { border-color: var(--bad); }
+.lis__sig { margin: 6px 0 0; color: var(--mu); font-size: 13px; }
+.lis__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-top: 12px; }
+.lis__grid b { display: block; font: 800 22px/1.1 var(--r); color: var(--tx); }
+.lis__grid span { color: var(--mu); font-size: 12px; }

@@ -649,6 +649,7 @@ def home(request: Request, current_user: User = Depends(require_login), db: Sess
     return templates.TemplateResponse("home.html", {
         "request": request, "current_user": current_user,
         "summary": build_summary(db),
+        "li_safety": __import__("services.linkedin_safety", fromlist=["card"]).card(),
         "history": history(db, 14),
         "best": _attach_pdf_flag(db, best, current_user.id),
         "sources": _sources_status(),

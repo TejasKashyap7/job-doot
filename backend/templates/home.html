@@ -45,6 +45,23 @@
         <div class="axis"><span>{{ history[0].date.strftime('%-d %b') }}</span><span>today</span></div>
       </div>
     </section>
+
+    {% if li_safety %}{% set L = li_safety %}
+    <section>
+      <div class="sec"><h2>LinkedIn safety</h2></div>
+      <div class="card lis lis--{{ L.status if L.checked else 'none' }}">
+        <div class="lis__top"><span class="lis__dot"></span><b>{{ L.status_text if L.checked else 'Not checked yet' }}</b>
+          <em>{{ L.ago if L.checked else 'first check runs tonight / tomorrow morning' }}</em></div>
+        {% if L.signals %}<p class="lis__sig">{{ L.signals }}</p>{% endif %}
+        <div class="lis__grid">
+          <div><b>{{ L.clean_days }}</b><span>clean day{{ 's' if L.clean_days != 1 }} in a row</span></div>
+          <div><b>{{ L.applied_today }}</b><span>applied today</span></div>
+          <div><b>{{ L.views_today }}</b><span>job pages opened today</span></div>
+          <div><b>{{ L.ceiling }}</b><span>most in a day, no warning{% if L.ceiling_day %} ({{ L.ceiling_day }}){% endif %}</span></div>
+        </div>
+      </div>
+    </section>
+    {% endif %}
   </div>
 
   <div class="stack">

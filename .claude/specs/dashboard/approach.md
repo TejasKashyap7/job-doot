@@ -82,3 +82,11 @@ All rendered server-side via Jinja2. No JS framework — plain HTML + CSS.
 - `templates/dashboard.html` — active jobs grid
 - `templates/archive.html` — applied jobs list
 - `static/style.css` — all styling
+
+## LinkedIn safety card (decided 2026-11-13, Tejas)
+A small card on Today, read-only from `data/applier/applier.db` (`account_checks`,
+`daily_activity`, `attempts`); written by the applier's twice-daily read-only account check
+(apply-agent `approach.md` → "LinkedIn account health check"). Shows: last check (ok / note /
+warning, time ago, the signal in plain words), clean days in a row, today's applications and
+job pages opened, and the proven-safe ceiling = highest applications in one day with no warning
+that day or the next. A warning also pauses the applier, which already turns the widget red.
