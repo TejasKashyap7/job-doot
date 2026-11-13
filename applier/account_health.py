@@ -26,9 +26,9 @@ _WEAK = ("new sign-in", "unrecognized sign-in", "unrecognised sign-in", "passwor
 _BANNERS_JS = """() => Array.from(document.querySelectorAll(
   '[role=alert], .artdeco-global-alert, .global-alert, [data-test-global-alert], .artdeco-toast-item'))
   .map(e => e.innerText).join('\\n').slice(0, 4000)"""
-_NOTIF_JS = """() => Array.from(document.querySelectorAll(
-  'article, .nt-card, [data-urn*="notification"], .notification-card'))
-  .slice(0, 40).map(e => e.innerText).join('\\n').slice(0, 12000)"""
+# LinkedIn's class names are obfuscated (e.g. "jkfl7n") and change, so read the page's <main>
+# text: on /notifications that is the notification list (checked live 2026-11-13: ~60 lines).
+_NOTIF_JS = """() => ((document.querySelector('main') || document.body).innerText || '').slice(0, 15000)"""
 
 
 def _scan(text: str) -> tuple[list[str], list[str]]:
