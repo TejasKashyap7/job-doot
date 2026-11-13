@@ -104,6 +104,12 @@ def _discard_linkedin(page, human):
         pass
 
 
+
+def _tagged(plan: dict, why: str) -> str:
+    """'[<kind>] why' — Claude's name for the kind of problem, for the bell / Needs-you tags
+    (approach.md "Problem tag from Claude")."""
+    return f"[{plan['tag']}] {why}" if plan.get("tag") else why
+
 class Agent:
     def __init__(self, page, cfg, conn, job, human: Human):
         self.page, self.cfg, self.conn, self.job = page, cfg, conn, job
@@ -347,7 +353,7 @@ class Agent:
                         _discard_linkedin(self.page, self.human)
                     qs = "; ".join(u["question"] for u in plan["unknown"])
                     return "skipped", f"question:{qs}"[:500], self.steps
-                return "skipped", f"needs_human:{plan['why'] or 'Haiku asked for help'} | {self.page.url}"[:900], self.steps
+                return "skipped", f"needs_human:{_tagged(plan, plan['why'] or 'Claude asked for help')} | {self.page.url}"[:900], self.steps
             if st == "give_up":
                 why = plan["why"] or "gave up"
                 if "not easy apply" in why.lower():
@@ -355,7 +361,7 @@ class Agent:
                 _shot(self.page, self.job["id"], "agent-gaveup")
                 if _is_linkedin(self.page.url):
                     _discard_linkedin(self.page, self.human)
-                return "failed", f"site:{why} | {self.page.url}"[:900], self.steps
+                return "failed", f"site:{_tagged(plan, why)} | {self.page.url}"[:900], self.steps
 
             # continue: carry out the actions with the ghost cursor
             for i, a in enumerate(plan["actions"]):

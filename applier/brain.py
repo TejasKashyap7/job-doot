@@ -216,7 +216,12 @@ STATUS:
 Reply with ONLY this JSON:
 {{"page":"<one line: what this page is>","actions":[...],"status":"continue",
   "unknown":[{{"n":N,"question":"<the question as written>"}}],"why":"<for non-continue>",
-  "made_up":[{{"question":"<the question as written>","answer":"<what you invented>"}}]}}
+  "made_up":[{{"question":"<the question as written>","answer":"<what you invented>"}}],
+  "tag":"<for ask_human / give_up only>"}}
+"tag" names the KIND of problem in 1-4 words. Use one of these exactly if it fits: Account / sign-in
+wall, Email verification code, CAPTCHA, Payment page, Profile doesn't fit, Wrong page / no form,
+Maybe already applied, Page stuck, Form field won't fill, Led away from the job. If none fits,
+invent a short new name for this kind of problem (e.g. "Salary field required").
 "why" is shown to the job seeker in a notification: write it in 1-3 SIMPLE sentences for a
 non-technical person — what you saw on the page, what you tried, and why you stopped.
 No codes, no element numbers. Example: "The company page only had a job-search box and a
@@ -298,7 +303,8 @@ def _validate_plan(data: dict, snap: dict) -> dict:
     if status == "continue" and not actions:
         raise BrainError("status continue but no actions")
     return {"page": str(data.get("page", ""))[:200], "actions": actions, "status": status,
-            "unknown": unknown, "why": str(data.get("why", ""))[:600]}
+            "unknown": unknown, "why": str(data.get("why", ""))[:600],
+            "tag": re.sub(r"[\[\]\n]", "", str(data.get("tag") or "")).strip()[:40]}
 
 
 def next_actions(cfg, snap: dict, rendered: str, job: dict, qa: list[dict], history: list[str],

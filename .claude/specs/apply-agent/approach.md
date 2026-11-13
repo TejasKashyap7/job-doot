@@ -404,3 +404,14 @@ Scheduling when `daily_target: fetched`:
   So by the end of the day, applied ≈ fetched unless the candidate list runs out or LinkedIn
   safety stops fire (those still pause everything, unchanged).
 - Digest moves to 23:30 so it reports after the sweep (`digest_time: "23:30"`).
+
+## Problem tag from Claude (decided 2026-11-13, Tejas)
+For the bell / Needs-you page (backend spec: `notifications/approach.md` "Problem tags",
+`dashboard/needs-you.md`). When the browser agent stops with `ask_human` or `give_up`, its
+reply also carries `"tag"`: a 1–4 word name for the KIND of problem. The prompt lists the known
+tags (Account / sign-in wall, Email verification code, CAPTCHA, Payment page, Profile doesn't
+fit, Wrong page / no form, Maybe already applied, Page stuck, Form field won't fill, Led away
+from the job) — use one of those exactly if it fits, otherwise invent a short new name. The
+applier stores it in front of the reason: `needs_human:[<tag>] <why> | <url>`,
+`site:[<tag>] <why> | <url>`. The backend's rules still decide first; Claude's tag is used when
+no rule matches, so a genuinely new kind of problem shows up as its own new tag.
