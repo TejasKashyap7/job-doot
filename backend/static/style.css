@@ -248,6 +248,7 @@ a.job__t:hover { color: var(--red); }
 .cal__day b { font: 800 12px var(--r); color: var(--tx); }
 .cal__day--has span { color: var(--tx); }
 .cal__day--today { box-shadow: inset 0 0 0 2px var(--red); }
+.cal__day--sel { outline: 2px solid var(--amb); outline-offset: -2px; }
 .cal__day--empty { background: transparent; }
 @media (min-width: 900px) { .cal__day { aspect-ratio: auto; height: 56px; } }
 .cal .muted { margin: 8px 0 0; }

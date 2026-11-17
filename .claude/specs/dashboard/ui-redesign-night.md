@@ -27,7 +27,7 @@ one product.
   scraper green if it fetched anything else red; applier green if it applied that day);
   **best matches** (top 5 active jobs by score, newest first); **pipeline** card (sources +
   live alerts, all real — no invented activity feed); the existing month calendar heatmap
-  kept below (tap a day → /jobs?date=).
+  kept below (tap a day → that day's Today view, see "Past day view").
 - **Jobs (/jobs)**: count chips (Active, Needs review → ?review=1, Filtered → /filtered,
   Awaiting scoring), compact search + score + status filters, source status, day groups
   of job cards. Each card keeps every old action: mark applied, CV, tailoring badge,
@@ -42,3 +42,20 @@ one product.
   (summary, 14-day history, best matches). No change to any POST route, form field name,
   or data written.
 - Every number shown is real (from the DB / applier.db / alerts). Nothing invented.
+
+## Past day view (decided 2026-11-18, Tejas)
+Problem: no way to see how "Today" looked on an earlier day; tapping a calendar day only
+listed that day's jobs.
+- Tapping a calendar day opens `/?date=YYYY-MM-DD`: the Today page for that IST day.
+  Today's date (or no `date`) = the normal live page. Future dates and bad values fall
+  back to the live page. The calendar shows the month of the chosen day.
+- Shown for a past day (all real, from `build_summary(db, days_ago=N)`): the rings,
+  Applied / Fetched / Need you, Easy Apply vs company site, scored, failed. Header
+  "Tue 17 Nov" + "Back to today ›", and a "See that day's jobs ›" link to
+  `/jobs?date=` (the old tap behaviour, one tap away).
+- Hidden for a past day (they describe *right now*, not that day): status pill, scraper /
+  applier notes, open questions, interviews in the next 7 days, LinkedIn safety, Best
+  matches, Pipeline. The 14-day health bars stay (history, not live).
+- The selected day is outlined in the calendar.
+- Known small difference: calendar counts and `/jobs?date=` group by UTC day, the day view
+  by IST day, so "Fetched" can differ by the few jobs scraped 00:00–05:30 IST.

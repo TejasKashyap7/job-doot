@@ -609,10 +609,25 @@ def notifications_clear(current_user: User = Depends(require_login), db: Session
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, current_user: User = Depends(require_login), db: Session = Depends(get_db),
-         year: int | None = None, month: int | None = None):
+         year: int | None = None, month: int | None = None, date: str = ""):
     """Calendar home page — how many jobs were fetched each day, by month. Scrape
-    activity is shared (same job pool for everyone); the counts strip is per-user."""
+    activity is shared (same job pool for everyone); the counts strip is per-user.
+    ?date=YYYY-MM-DD (a past IST day) = that day's Today view (ui-redesign-night.md)."""
+    from services.daily_summary import IST
     now = datetime.utcnow()
+    day = None   # set only for a past day; today / future / bad value = live page
+    try:
+        picked = datetime.strptime(date, "%Y-%m-%d").date() if date else None
+    except ValueError:
+        picked = None
+    if picked:
+        days_ago = (datetime.now(IST).date() - picked).days
+        if days_ago > 0:
+            day = {"days_ago": days_ago, "iso": picked.isoformat(),
+                   "label": picked.strftime("%a %-d %b"), "day": picked.day,
+                   "year": picked.year, "month": picked.month}
+            year = year or picked.year
+            month = month or picked.month
     year = year or now.year
     month = month or now.month
     month = max(1, min(12, month))
@@ -648,8 +663,9 @@ def home(request: Request, current_user: User = Depends(require_login), db: Sess
 
     return templates.TemplateResponse("home.html", {
         "request": request, "current_user": current_user,
-        "summary": build_summary(db),
-        "li_safety": __import__("services.linkedin_safety", fromlist=["card"]).card(),
+        "summary": build_summary(db, days_ago=day["days_ago"] if day else 0),
+        "day": day,
+        "li_safety": None if day else __import__("services.linkedin_safety", fromlist=["card"]).card(),
         "history": history(db, 14),
         "best": _attach_pdf_flag(db, best, current_user.id),
         "sources": _sources_status(),
