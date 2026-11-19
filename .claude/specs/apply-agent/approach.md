@@ -471,6 +471,7 @@ decides the next step.
 4. **No "profile doesn't fit" stops in test mode** — TEST_RULES tell the agent to apply even
    when the job asks for more than the applicant has (that is the score rule in another form).
 5. **Salutation** — Vishal's facts get `Salutation / title: Mr.` (Tejas, 2026-11-20). Gender
-   still "prefer not to say" or unknown. The Q&A bank "Salutation" answer becomes "Mr.".
+   from the facts (Tejas 2026-11-20: Male; also relocate + onsite Yes, DOB 2000, Gurugram PIN, no
+   current offers, tick AI-confirmation boxes). The Q&A bank "Salutation" answer becomes "Mr.".
 6. **LinkedIn warnings stop the day** — unchanged: any safety signal (URL/text stop, account
    check `warning`) pauses ALL applying until Tejas clears the flag after discussing it.
