@@ -60,87 +60,106 @@ def run_slot(cfg, max_apply: int | None = None, max_views: int | None = None) ->
     target = max_apply or random.randint(1, cfg["max_per_slot"])
     view_cap = max_views or cfg["max_views_per_slot"]
     applied = views = crashes = 0
-    with Session(cfg) as page:
-        if cfg.get("source") == "linkedin_search":
-            try:
-                found = search_jobs(page, cfg)
-            except SafetyStop as stop:
-                safety.pause(f"safety:{stop}")
-                notify.send(cfg, f"🛑 Applier paused for {applicant} on job search: {stop}")
-                return
-        else:
-            found = backend.candidate_jobs(cfg)
-        jobs = [j for j in found if j["id"] not in excluded]
-        if not jobs:
-            log.info("No eligible jobs left")
-            return
-        log.info("Slot: target %d application(s), %d candidate jobs (source=%s)",
-                 target, len(jobs), cfg.get("source", "db"))
-        seen = store.tried_keys(conn, applicant, excluded)
-        for job in jobs:
-            if applied >= target or views >= view_cap:
-                break
-            key = store.job_key(job["title"], job["company"])
-            if job["title"] and seen.get(key, job["id"]) != job["id"]:
-                log.info("Job %s: same as job %s (%s — %s), skipping duplicate",
-                         job["id"], seen[key], job["title"], job["company"])
-                continue
-            seen[key] = job["id"]
-            views += 1
-            log.info("Job %s: %s — %s (score %s)", job["id"], job["title"], job["company"], job["score"])
-            try:
-                status, detail, steps = apply_to_job(page, cfg, conn, job)
-            except Exception as exc:
-                log.exception("Job %s crashed", job["id"])
-                status, detail, steps = "failed", f"crash:{type(exc).__name__}: {exc}"[:300], 0
-            log.info("Job %s -> %s (%s)", job["id"], status, detail)
-            if status == "failed" and detail.startswith("brain:") and health.is_login_error(detail):
-                # Not the job's fault: don't log the attempt (it stays eligible), stop here,
-                # and say so on the widget. The first slot after a re-login just works.
-                log.warning("Claude is logged out on the Pi — ending slot, job %s left for later", job["id"])
-                health.record(health.LOGGED_OUT, "Claude logged out (Pi)", detail[len("brain:"):])
-                flag = DATA / f"login-notified-{datetime.now():%Y%m%d}"
-                if not flag.exists():
-                    flag.touch()
-                    notify.send(cfg, f"🔑 Applier for {applicant}: Claude is logged out on the Pi, "
-                                     "so nothing can be applied.\nFix: ssh tejas@pi5 → claude → /login")
-                return
-            if status == "failed":
-                _shot(page, job["id"])
-            store.log_attempt(conn, applicant, job, status, detail, steps)
 
-            if status == "paused":
-                safety.pause(detail)
-                notify.send(cfg, f"🛑 Applier paused for {applicant}: {detail}\n"
-                                 f"Job: {job['title']} — {job['company']}\n"
-                                 "Nothing will be applied until the pause flag is cleared.")
+    def searched():
+        try:
+            return search_jobs(page, cfg)
+        except SafetyStop as stop:
+            safety.pause(f"safety:{stop}")
+            notify.send(cfg, f"🛑 Applier paused for {applicant} on job search: {stop}")
+            return None
+
+    def batches():
+        """Fetched jobs first; then (topup_search) Easy Apply search results while under target.
+        Spec: apply-agent/approach.md "Volume test"."""
+        if cfg.get("source") == "linkedin_search":
+            yield searched()
+            return
+        yield backend.candidate_jobs(cfg)
+        if cfg.get("topup_search"):
+            for _ in range(cfg["topup_searches"]):
+                if applied >= target or views >= view_cap:
+                    return
+                log.info("Out of fetched jobs at %d/%d — topping up from LinkedIn search", applied, target)
+                yield searched()
+
+    with Session(cfg) as page:
+        seen = store.tried_keys(conn, applicant, excluded)
+        tried = set()      # job ids opened in this slot (search batches can repeat a job)
+        for found in batches():
+            if found is None:      # safety stop on the search page — everything is paused
                 return
-            if status == "skipped" and detail.startswith("quota:"):
-                log.info("Claude quota exhausted — ending slot; applying resumes after the reset")
-                if not (DATA / f"quota-notified-{datetime.now():%Y%m%d}").exists():
-                    (DATA / f"quota-notified-{datetime.now():%Y%m%d}").touch()
-                    notify.send(cfg, f"⏸️ Applier for {applicant}: Claude usage limit reached "
-                                     f"({detail[len('quota:'):]}). Skipping until it resets — no action needed.")
-                return
-            if status == "applied":
-                applied += 1
-            if status == "skipped" and detail.startswith("needs_human:"):
-                why, _, link = detail[len("needs_human:"):].partition(" | ")
-                notify.send(cfg, f"🙋 Needs you — apply by hand ({applicant})\n"
-                                 f"{job['title']} — {job['company']}\nWhy: {why.strip()}\n"
-                                 f"Link: {link.strip() or job['url']}")
-            if status == "skipped" and detail.startswith("question:"):
-                notify.send(cfg, f"❓ {applicant} — new form question(s), job skipped until answered:\n"
-                                 f"{detail[len('question:'):]}\n({job['title']} — {job['company']})")
-            # Failed / needs-you jobs never pause — only LinkedIn safety signals do
-            # (status "paused" above). Spec: "No failure-count pause" (2026-11-05).
-            if detail.startswith("crash:"):
-                crashes += 1
-                if crashes >= 2:
-                    log.info("Browser crashed twice — ending this slot (not a pause)")
+            jobs = [j for j in found if j["id"] not in excluded and j["id"] not in tried]
+            if not jobs:
+                log.info("No eligible jobs in this batch")
+                continue
+            log.info("Slot: target %d application(s), %d candidate jobs (source=%s)",
+                     target, len(jobs), jobs[0].get("keyword") and "search" or cfg.get("source", "db"))
+            for job in jobs:
+                if applied >= target or views >= view_cap:
                     break
-            if applied < target and views < view_cap:
-                pause(120, 360) if status == "applied" else pause(20, 60)
+                key = store.job_key(job["title"], job["company"])
+                if job["title"] and seen.get(key, job["id"]) != job["id"]:
+                    log.info("Job %s: same as job %s (%s — %s), skipping duplicate",
+                             job["id"], seen[key], job["title"], job["company"])
+                    continue
+                seen[key] = job["id"]
+                tried.add(job["id"])
+                views += 1
+                log.info("Job %s: %s — %s (score %s)", job["id"], job["title"], job["company"], job["score"])
+                try:
+                    status, detail, steps = apply_to_job(page, cfg, conn, job)
+                except Exception as exc:
+                    log.exception("Job %s crashed", job["id"])
+                    status, detail, steps = "failed", f"crash:{type(exc).__name__}: {exc}"[:300], 0
+                log.info("Job %s -> %s (%s)", job["id"], status, detail)
+                if status == "failed" and detail.startswith("brain:") and health.is_login_error(detail):
+                    # Not the job's fault: don't log the attempt (it stays eligible), stop here,
+                    # and say so on the widget. The first slot after a re-login just works.
+                    log.warning("Claude is logged out on the Pi — ending slot, job %s left for later", job["id"])
+                    health.record(health.LOGGED_OUT, "Claude logged out (Pi)", detail[len("brain:"):])
+                    flag = DATA / f"login-notified-{datetime.now():%Y%m%d}"
+                    if not flag.exists():
+                        flag.touch()
+                        notify.send(cfg, f"🔑 Applier for {applicant}: Claude is logged out on the Pi, "
+                                         "so nothing can be applied.\nFix: ssh tejas@pi5 → claude → /login")
+                    return
+                if status == "failed":
+                    _shot(page, job["id"])
+                store.log_attempt(conn, applicant, job, status, detail, steps)
+
+                if status == "paused":
+                    safety.pause(detail)
+                    notify.send(cfg, f"🛑 Applier paused for {applicant}: {detail}\n"
+                                     f"Job: {job['title']} — {job['company']}\n"
+                                     "Nothing will be applied until the pause flag is cleared.")
+                    return
+                if status == "skipped" and detail.startswith("quota:"):
+                    log.info("Claude quota exhausted — ending slot; applying resumes after the reset")
+                    if not (DATA / f"quota-notified-{datetime.now():%Y%m%d}").exists():
+                        (DATA / f"quota-notified-{datetime.now():%Y%m%d}").touch()
+                        notify.send(cfg, f"⏸️ Applier for {applicant}: Claude usage limit reached "
+                                         f"({detail[len('quota:'):]}). Skipping until it resets — no action needed.")
+                    return
+                if status == "applied":
+                    applied += 1
+                if status == "skipped" and detail.startswith("needs_human:"):
+                    why, _, link = detail[len("needs_human:"):].partition(" | ")
+                    notify.send(cfg, f"🙋 Needs you — apply by hand ({applicant})\n"
+                                     f"{job['title']} — {job['company']}\nWhy: {why.strip()}\n"
+                                     f"Link: {link.strip() or job['url']}")
+                if status == "skipped" and detail.startswith("question:"):
+                    notify.send(cfg, f"❓ {applicant} — new form question(s), job skipped until answered:\n"
+                                     f"{detail[len('question:'):]}\n({job['title']} — {job['company']})")
+                # Failed / needs-you jobs never pause — only LinkedIn safety signals do
+                # (status "paused" above). Spec: "No failure-count pause" (2026-11-05).
+                if detail.startswith("crash:"):
+                    crashes += 1
+                    if crashes >= 2:
+                        log.info("Browser crashed twice — ending this slot (not a pause)")
+                        break
+                if applied < target and views < view_cap:
+                    pause(120, 360) if status == "applied" else pause(20, 60)
     store.add_views(conn, datetime.now().strftime("%Y-%m-%d"), views)   # LinkedIn safety volume log
     log.info("Slot done: %d applied, %d pages viewed", applied, views)
 
@@ -180,23 +199,40 @@ def send_digest(cfg):
     notify.send(cfg, "\n".join(lines))
 
 
-def today_progress(cfg) -> tuple[int, int] | None:
-    """Test mode (daily_target: fetched): (jobs fetched today, applied today), IST day.
-    None when not in that mode or the backend can't be read (then slots use old pacing).
-    Spec: apply-agent/assumption.md + approach.md "Test mode"."""
-    if cfg.get("daily_target") != "fetched":
-        return None
+def fixed_target(cfg, day) -> int | None:
+    """Volume test: n from `daily_targets` [[from, to, n], ...] (IST dates, inclusive) covering
+    `day`, else None. Spec: apply-agent/approach.md "Volume test"."""
+    for lo, hi, n in cfg.get("daily_targets") or []:
+        if str(lo) <= day.isoformat() <= str(hi):
+            return int(n)
+    return None
+
+
+def has_target(cfg, day) -> bool:
+    return fixed_target(cfg, day) is not None or cfg.get("daily_target") == "fetched"
+
+
+def today_progress(cfg) -> tuple[int, int, str] | None:
+    """(target today, applied today, what the target is), IST day. Target = fixed volume-test
+    number for today, else jobs fetched today (daily_target: fetched). None when neither applies
+    or the backend can't be read (then slots use old pacing).
+    Spec: apply-agent/assumption.md + approach.md "Test mode" / "Volume test"."""
     tz = ZoneInfo(cfg["timezone"])
     midnight = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-    try:
-        fetched = backend.fetched_since(
-            cfg, midnight.astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds"))
-    except Exception:
-        log.exception("could not read today's fetched count — using normal pacing")
-        return None
+    target, label = fixed_target(cfg, midnight.date()), "fixed"
+    if target is None:
+        if cfg.get("daily_target") != "fetched":
+            return None
+        label = "fetched"
+        try:
+            target = backend.fetched_since(
+                cfg, midnight.astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds"))
+        except Exception:
+            log.exception("could not read today's fetched count — using normal pacing")
+            return None
     applied = store.applied_since(store.connect(), cfg["name"],
                                   midnight.replace(tzinfo=None).isoformat(timespec="seconds"))
-    return fetched, applied
+    return target, applied, label
 
 
 def slot_size(cfg, kind: str, slots_left: int) -> tuple[int | None, int | None]:
@@ -205,15 +241,38 @@ def slot_size(cfg, kind: str, slots_left: int) -> tuple[int | None, int | None]:
     prog = today_progress(cfg)
     if prog is None:
         return None, None
-    fetched, applied = prog
-    remaining = max(0, fetched - applied)
-    log.info("Today: fetched %d, applied %d, remaining %d, slots left %d", fetched, applied, remaining, slots_left)
+    target, applied, label = prog
+    remaining = max(0, target - applied)
+    log.info("Today: target %d (%s), applied %d, remaining %d, slots left %d",
+             target, label, applied, remaining, slots_left)
     if remaining == 0:
         return 0, 0
     if kind == "sweep":
         return remaining, cfg["sweep_max_views"]
     n = max(1, math.ceil(remaining / max(1, slots_left)))
     return n, max(cfg["max_views_per_slot"], 5 * n)
+
+
+def _at(day, hhmm: str, tz) -> datetime:
+    return datetime.combine(day, datetime.strptime(hhmm, "%H:%M").time(), tz)
+
+
+def catchup_slots(cfg, now) -> list[datetime]:
+    """6 PM rule: under target => extra slots every random catchup_gap_min until catchup_end."""
+    prog = today_progress(cfg)
+    if prog is None or prog[1] >= prog[0]:
+        log.info("Catch-up check: target met or no target — no extra slots")
+        return []
+    end = _at(now.date(), cfg["catchup_end"], now.tzinfo)
+    out, t = [], now
+    while True:
+        t += timedelta(minutes=random.uniform(*cfg["catchup_gap_min"]))
+        if t >= end:
+            break
+        out.append(t)
+    log.info("Catch-up: %d/%d applied — adding %d slot(s): %s", prog[1], prog[0], len(out),
+             ", ".join(f"{x:%H:%M}" for x in out))
+    return out
 
 
 def daemon(cfg):
@@ -230,20 +289,27 @@ def daemon(cfg):
             t = t0 + timedelta(seconds=random.randint(0, max(0, int((t1 - t0).total_seconds()))))
             if t > now:
                 events.append((t, "check"))
-        if cfg.get("daily_target") == "fetched":
+        if has_target(cfg, now.date()):
             sh, sm = map(int, cfg["sweep_time"].split(":"))
             sweep = datetime(now.year, now.month, now.day, sh, sm, tzinfo=tz)
             if sweep > now:
                 events.append((sweep, "sweep"))
+            if cfg.get("catchup_time"):
+                ct = _at(now.date(), cfg["catchup_time"], tz)
+                if ct > now:
+                    events.append((ct, "catchup"))
+                elif now < _at(now.date(), cfg["catchup_end"], tz):   # restarted after 18:00
+                    events.append((now + timedelta(minutes=1), "catchup"))
         events.sort()
         log.info("Today's plan: %s", ", ".join(f"{t:%H:%M} {k}" for t, k in events) or "nothing left")
-        for i, (t, kind) in enumerate(events):
+        while events:
+            t, kind = events.pop(0)
             wait = (t - datetime.now(tz)).total_seconds()
             if wait > 0:
                 time.sleep(wait)
             try:
                 if kind in ("slot", "sweep"):
-                    n, views = slot_size(cfg, kind, sum(k in ("slot", "sweep") for _, k in events[i:]))
+                    n, views = slot_size(cfg, kind, 1 + sum(k in ("slot", "sweep") for _, k in events))
                     if n == 0:
                         log.info("Today's target already met — skipping %s", kind)
                         continue
@@ -251,6 +317,9 @@ def daemon(cfg):
                     run_slot(cfg, n, views)
                     if health.writes == before:  # slot didn't report an error itself
                         health.record(health.OK)
+                elif kind == "catchup":
+                    events += [(x, "slot") for x in catchup_slots(cfg, datetime.now(tz))]
+                    events.sort()
                 elif kind == "check":
                     account_health.run_check(cfg)
                 else:

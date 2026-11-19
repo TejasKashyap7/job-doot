@@ -24,6 +24,13 @@ DEFAULTS = {
     "digest_time": "21:30",
     # Test mode (assumption.md): daily_target "fetched" => applications/day = jobs fetched/day
     "daily_target": None,
+    # Volume test (approach.md, 2026-11-20): fixed target per IST date range, wins over daily_target
+    "daily_targets": None,        # [["2026-11-20", "2026-11-27", 20], ...] inclusive
+    "topup_search": False,        # out of fetched jobs and under target => Easy Apply LinkedIn search
+    "topup_searches": 3,          # max searches per slot
+    "catchup_time": None,         # "18:00": if under target, add slots every catchup_gap_min
+    "catchup_gap_min": [20, 40],
+    "catchup_end": "23:45",
     "sweep_time": "22:00",        # last catch-up slot of the day (daily_target only)
     "sweep_max_views": 150,
     "test_mode": False,

@@ -445,3 +445,32 @@ every slot (applications per day come from `attempts`). The dashboard's "LinkedI
 shows: last check result + time, clean days in a row, today's applications / pages opened,
 and the **highest daily volume with no warning that day or the next** = the proven-safe ceiling.
 Backend side: `dashboard/approach.md` → "LinkedIn safety card".
+
+## Volume test: fixed 20/day, then 30/day (decided 2026-11-20, Tejas)
+Why: `daily_target: fetched` (≈28–30 jobs/day) still ended days at 4–10 applications. Not the
+score rule (already `min_score: 0`) and not the timing: the fetched pool runs dry. Nov 17–19:
+104 closed, 45 needs-you (sign-in wall / CAPTCHA / "profile doesn't fit"), 27 form questions
+(mostly "Salutation" with no "prefer not to say" option), 25 company-site failures. Late slots
+ended after 1–2 page views with nothing left to try.
+
+Goal: prove how much LinkedIn tolerates. **20 applications/day Nov 20–27, then 30/day
+Nov 28–Dec 4.** After Dec 4 the profile falls back to `daily_target` (fetched) until Tejas
+decides the next step.
+
+1. **Fixed targets by date** — profile `daily_targets: [[from, to, n], ...]` (IST dates,
+   inclusive). A day inside a range uses n; otherwise `daily_target` as before. Slot sizing
+   unchanged: `ceil(remaining / slots_left)`, remaining = target − applied today.
+2. **Search top-up** — `topup_search: true`: when a slot has tried every eligible fetched job
+   and is still under its target, it runs the Easy-Apply-filtered LinkedIn search from
+   "Test mode — LinkedIn search source" (random keyword from `search_keywords`) and keeps
+   going on those results, up to `topup_searches` (default 3) searches per slot. Search results
+   are not scored (test only). A safety hit on the search page pauses everything, as before.
+3. **6 PM catch-up** — `catchup_time: "18:00"`. At that time, if applied < target, the daemon
+   adds extra slots every random `catchup_gap_min: [20, 40]` minutes until `catchup_end:
+   "23:45"`. Slots skip themselves once the target is met. The 22:00 sweep stays.
+4. **No "profile doesn't fit" stops in test mode** — TEST_RULES tell the agent to apply even
+   when the job asks for more than the applicant has (that is the score rule in another form).
+5. **Salutation** — Vishal's facts get `Salutation / title: Mr.` (Tejas, 2026-11-20). Gender
+   still "prefer not to say" or unknown. The Q&A bank "Salutation" answer becomes "Mr.".
+6. **LinkedIn warnings stop the day** — unchanged: any safety signal (URL/text stop, account
+   check `warning`) pauses ALL applying until Tejas clears the flag after discussing it.

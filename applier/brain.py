@@ -33,7 +33,12 @@ TEST_RULES = """TEST ACCOUNT (made-up answers allowed):
 - List EVERY invented answer in "made_up" (question as written + your answer).
 - Never invent government ID numbers (PAN, Aadhaar, passport, SSN, national ID): put that field
   in "unknown" (browser: status "ask_human").
-- Gender / title (Mr./Ms.): pick a "prefer not to say" option if one exists, else "unknown".
+- Gender: pick a "prefer not to say" option if one exists, else "unknown".
+- Title / salutation (Mr./Ms.): use the facts or answered questions; if they say nothing,
+  treat it like gender.
+- NEVER stop, give up or ask for help because the job wants more experience, skills, degrees
+  or seniority than the applicant has — this is a test account, apply anyway (never use the
+  tag "Profile doesn't fit").
 """
 
 
