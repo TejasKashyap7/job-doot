@@ -21,3 +21,6 @@ data/logs/
 backend/data/
 *.session
 tools/*.session
+
+# Confidential employer (Lenskart R&D, NDA) notes — never commit; synced to Pi via scp only
+.claude/research/private/
