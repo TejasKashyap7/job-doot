@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Widget Offline Report</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1d1d1f;--mute:#6b6b70;--card:#fff;--line:#e4e2de;--ok:#1f8a4c;--bad:#c4302b;--warn:#b7791f;--acc:#2b5fd9}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--fg:#ececee;--mute:#9a9aa1;--card:#1d1d20;--line:#2e2e33;--ok:#4cc27a;--bad:#ff6b63;--warn:#f0b54a;--acc:#7da2ff}}
+:root[data-theme="dark"]{--bg:#141416;--fg:#ececee;--mute:#9a9aa1;--card:#1d1d20;--line:#2e2e33;--ok:#4cc27a;--bad:#ff6b63;--warn:#f0b54a;--acc:#7da2ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:780px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:28px;line-height:1.2;margin:0 0 4px}
+h2{font-size:20px;margin:40px 0 10px;padding-top:8px;border-top:1px solid var(--line)}
+h3{font-size:16px;margin:20px 0 6px}
+.sub{color:var(--mute);margin:0 0 24px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+.big{font-size:18px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-weight:600}
+td:first-child{white-space:nowrap;font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;border:1px solid currentColor}
+code{font:13px ui-monospace,Menlo,monospace;background:var(--line);padding:1px 5px;border-radius:4px}
+.flow{font:14px ui-monospace,Menlo,monospace;white-space:pre;overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+ol li,ul li{margin:4px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Why the widget keeps saying "offline"</h1>
+<p class="sub">job-doot iPhone widget · investigated 16 Nov 2026 by 3 independent agents · nothing was changed</p>
+
+<div class="box big">
+<b>In one line:</b> The Pi is fine. It answers in a few milliseconds and never failed a widget request.
+The widget says "offline" because <b>your phone stops sending requests</b>. iOS puts the Tailscale VPN to sleep in the background, and the widget's background refresh can't reach the Pi.
+</div>
+
+<h2>1. How the widget works (and where it breaks)</h2>
+<div class="flow">Every ~15-30 min iOS wakes the Scriptable widget in the background
+   |
+   v
+Widget asks:  http://100.66.138.76:8080/api/summary   (the Pi's Tailscale address)
+   |
+   v
+Request must go through the <b>Tailscale VPN on the phone</b>   &lt;-- BREAKS HERE
+   |
+   v
+Pi answers in ~0.01 s with your numbers  --&gt;  rings drawn</div>
+<p>When the Tailscale tunnel on the phone is asleep, the request never leaves the phone.
+After 10 seconds the widget gives up and draws the <b>"offline - Tailscale off or Pi down"</b> card.
+iOS then decides on its own when to try again, which can be hours later, so the card stays stuck.</p>
+
+<div class="box">
+<b>Update 23:07: your phone confirmed it.</b> The Tailscale app on the iPhone shows a warning:
+<b>"DNS Unavailable: Tailscale can't reach the configured DNS servers"</b> (<code>dns-forward-failing</code>).
+<ul>
+<li>Your tailnet has no custom DNS servers set, so Tailscale on the phone relies on the Wi-Fi router's own DNS. If it can't reach even the router, Tailscale's part of the phone has lost its own network access. That fits the dead tunnel to the Pi (0 handshakes).</li>
+<li>The widget calls the Pi by IP address, so DNS itself isn't what blocks the widget. The warning is a <b>symptom</b> of the same stuck Tailscale connection on the phone.</li>
+<li><span class="warn">Plausible extra trigger, not verified:</span> your home router hands out an IPv6 "link-local" DNS address (<code>fe80::…</code>) as the first DNS server. This network already has a history of IPv6 timeouts (e.g. <code>pi5.local</code>), and Tailscale may fail to reach that kind of address.</li>
+<li><b>Fix now:</b> in the Tailscale app on the phone, turn the VPN off and on again.<br><b>Lasting fix (free, no code):</b> in the Tailscale admin console, open DNS, add a global nameserver (e.g. Cloudflare <code>1.1.1.1</code>) and turn on "Override DNS servers". Tailscale then stops depending on the router's DNS.</li>
+</ul>
+</div>
+
+<h2>2. What the 3 agents found</h2>
+<div class="tablewrap"><table>
+<tr><th>Agent</th><th>Looked at</th><th>Conclusion</th></tr>
+<tr><td>Pi / server</td><td>speed, errors, database locks, restarts, Tailscale on Pi</td><td><span class="ok">Server healthy.</span> Every phone request got a 200 (OK) reply. Phone traffic simply <b>stops arriving</b>.</td></tr>
+<tr><td>Phone / iOS</td><td>widget code, iOS refresh rules, Tailscale-on-iOS reports</td><td>iOS Tailscale tunnel goes idle in background. Widget refresh is only a <i>hint</i> to iOS, so retries can be hours apart.</td></tr>
+<tr><td>Daily timeline</td><td>3 days of logs, cron jobs, deploys, reboots</td><td>No daily job breaks it. Today's failure is the phone tunnel. <b>Yesterday's was different: the Pi really was down</b> (power loss).</td></tr>
+</table></div>
+<p><b>They agree:</b> today the problem is on the phone side, not the Pi. The one new fact from the timeline agent is that yesterday had a second, separate cause.</p>
+
+<h2>3. The evidence, with real examples</h2>
+<h3>Example A: today (16 Nov). Pi up, phone silent.</h3>
+<div class="tablewrap"><table>
+<tr><th>Time (IST)</th><th>What happened</th></tr>
+<tr><td>08:11 → 13:30</td><td>Widget asks the Pi every 15-30 min. <span class="ok">All replies OK.</span></td></tr>
+<tr><td>13:30:02</td><td>Last request from the phone. In the <b>same second</b>, the Pi's Tailscale last hears from the phone.</td></tr>
+<tr><td>13:30 → 22:56</td><td><span class="bad">Zero traffic from the phone.</span> The Pi, backend and Tailscale were up the whole time (container up 30 h, 0 restarts).</td></tr>
+<tr><td>22:56 (test)</td><td>From the Pi and the Mac: <code>/api/summary</code> answers in 0.007-0.02 s. The phone shows as "online" in Tailscale but has <b>0 handshakes and 0 bytes</b> with the Pi: a dead tunnel.</td></tr>
+</table></div>
+<p>Think of it like a phone line that's still plugged in while the person on the other end has hung up. Tailscale lists your phone as "online", but nothing is actually passing through.</p>
+
+<h3>Example B: yesterday (15 Nov). The Pi really was down.</h3>
+<div class="tablewrap"><table>
+<tr><th>Time (IST)</th><th>What happened</th></tr>
+<tr><td>16:01</td><td>Last widget request before the outage.</td></tr>
+<tr><td>~17:05</td><td><span class="bad">Pi lost power or hung</span> (unclean shutdown: the log file has garbage bytes at that point).</td></tr>
+<tr><td>~21:15</td><td>Pi boots again.</td></tr>
+<tr><td>21:19-21:21</td><td>You run the script by hand in Scriptable. It works because <b>the Pi had just come back</b>, and running it in the foreground also woke Tailscale up.</td></tr>
+<tr><td>21:19 → next day 13:30</td><td>Widget works normally (with a normal overnight pause).</td></tr>
+</table></div>
+<p>So "run the script again" only <i>seemed</i> to fix it. Yesterday it lined up with the Pi coming back. Today it would help only because it wakes the phone's tunnel for a while.</p>
+
+<h3>Why tapping the widget seems to "work"</h3>
+<p>The Pi's logs show <b>no dashboard page load from your phone today</b>. Safari was most likely showing an <b>old copy of the page saved from your last visit</b>, not fresh data. Try it: pull down to refresh in Safari while the widget says offline. If the page fails or spins, the tunnel is down.</p>
+
+<h3>Ruled out</h3>
+<ul>
+<li>Slow server or busy Pi: replies take milliseconds and the CPU is 97% idle.</li>
+<li>Database locks, wrong key, server errors: none in 3 days of logs (34 of 34 summary requests OK).</li>
+<li>A daily cron job, deploy or restart breaking things: nothing lines up with the gaps.</li>
+<li>Midnight or date bugs: requests succeeded across midnight.</li>
+<li>Pi Wi-Fi or Pi Tailscale: stable (one 19-second Wi-Fi blip at 03:02, unrelated). The Pi's Tailscale key is valid until May 2027.</li>
+</ul>
+
+<h2>4. Why it looks like it "breaks every day"</h2>
+<ol>
+<li>During the day the phone's Tailscale tunnel goes idle or gets killed by iOS. iOS gives VPN apps very little memory, and Tailscale's network extension gets killed when it goes over.</li>
+<li>The next background refresh can't reach the Pi, so the widget draws "offline".</li>
+<li>iOS treats "refresh in 15 min" as a suggestion only, so the stuck card can stay for hours.</li>
+<li>The widget throws away the last good numbers and shows the same "offline" text for <i>every</i> kind of failure, so you can't tell "phone can't reach Pi" from "Pi is dead".</li>
+<li>You open Scriptable or Tailscale, things wake up, it works for a few hours, and then the cycle repeats.</li>
+</ol>
+
+<h2>5. Possible solutions</h2>
+
+<h3>Quick checks on the phone (free, 2 minutes)</h3>
+<ul>
+<li>Open the <b>Tailscale app</b> and confirm it says Connected. In its settings, turn on <b>VPN On Demand</b> (iOS then brings the tunnel back up automatically).</li>
+<li>Update the Tailscale app. Recent releases fix the network extension running out of memory.</li>
+<li>Low Power Mode cuts background refreshes. Expect more "offline" while it's on.</li>
+</ul>
+<p class="warn">On their own these will likely help, but they won't fully fix it. iOS can still put the tunnel to sleep.</p>
+
+<h3>Option 1: make the widget honest (small code change) <span class="pill">recommended</span></h3>
+<ul>
+<li>Save the last good numbers on the phone. On failure, <b>keep showing them</b> with a grey footer like <code>last update 1:30 PM · can't reach Pi</code> instead of a blank "offline".</li>
+<li>Show the real reason: <i>"phone can't reach Pi (VPN asleep)"</i> vs <i>"Pi replied with an error"</i>.</li>
+<li>Skip re-downloading the widget code on every refresh (once every few hours is enough). This halves the network work per refresh.</li>
+</ul>
+<p>Example: instead of a blank card at 6 PM, you'd see your 1:30 PM rings plus <code>● 1:30 PM · stale (VPN asleep)</code>. It's still useful and tells you exactly what's wrong.</p>
+
+<h3>Option 2: don't need the phone's VPN at all (Tailscale Funnel, free)</h3>
+<ul>
+<li>Tailscale Funnel can give one small Pi endpoint a public <code>https://pi5.&lt;tailnet&gt;.ts.net</code> address. It's free on your plan and needs no domain.</li>
+<li>The widget calls that address instead of <code>100.66.138.76</code>, so it works <b>even when the phone's Tailscale is asleep or off</b>.</li>
+<li>Trade-off: that one endpoint becomes reachable from the internet, protected by the widget key. It only exposes read-only counts. Only the summary endpoint should be exposed, not the whole dashboard.</li>
+</ul>
+<p>This is the only option that removes the root cause. Options 1 and 3 make the problem easier to live with.</p>
+
+<h3>Option 3: Pi pushes, phone doesn't pull</h3>
+<ul>
+<li>The Pi sends the numbers to something the phone already receives without a VPN (for example a free push service, or Telegram). This is a bigger change, and you've said you rarely open Telegram, so it's lower priority.</li>
+</ul>
+
+<h3>For yesterday's real outage</h3>
+<ul>
+<li>The Pi lost power or froze around 17:05 on 15 Nov. No under-voltage was recorded, so this was likely a power cut or the plug, not a weak adapter. A cheap UPS or power bank with pass-through would cover short power cuts.</li>
+</ul>
+
+<h2>6. Other problems the agents noticed (not the widget)</h2>
+<ul>
+<li class="bad"><b>Auto-deploy is broken since 13 Nov 10:48.</b> The Pi's 3-minute deploy poller has logged "fetch failed" every time since then, so nothing pushed after that has reached the Pi.</li>
+<li class="bad"><b>The 09:30 daily calendar event is failing.</b> Google Calendar credentials error in <code>calendar_service</code>.</li>
+<li class="warn"><code>docker logs</code> stops showing anything after 13 Nov because the power cut corrupted the log file. The raw log file on disk is still readable.</li>
+</ul>
+
+<p class="sub" style="margin-top:40px">Report file: /Users/tejas/Documents/personal-projects/job-doot/reports/widget-offline-2026-11-16.html</p>
+</main>
+</body>
+</html>
