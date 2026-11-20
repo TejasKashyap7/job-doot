@@ -78,11 +78,11 @@
 %-----------SKILLS-----------
 \section{Skills}
 \textbf{Languages:} Python, C++, AppScript \\
-\textbf{GenAI \& LLM:} Groq, Google Gemini, LangChain, LangGraph, MCP, RAG, Multi-Agent Systems, Hallucination Mitigation \\
+\textbf{GenAI \& LLM:} Small Language Models (SLMs), LLM Orchestration, Groq, Google Gemini, LangChain, LangGraph, MCP, RAG, Multi-Agent Systems, Hallucination Mitigation \\
 \textbf{Vector DBs:} ChromaDB, Pinecone, FAISS, LaBSE embeddings (cross-lingual) \\
-\textbf{Indic \& Speech AI:} Sarvam AI (batch ASR), Speaker Diarization, Cross-Lingual Retrieval \\
+\textbf{Speech \& Voice AI:} Voice-to-Voice Conversational Agents, Voice Activity Detection (Silero VAD), Turn-Taking \& Barge-In, Sarvam AI (ASR/TTS), Speaker Diarization, Hindi/Hinglish \\
 \textbf{ML/DL:} TensorFlow, Keras, PyTorch, Scikit-learn, Transfer Learning, ONNX (edge inference), Federated Learning (Flower), YOLOv5 \\
-\textbf{Deployment:} FastAPI, Docker, Raspberry Pi 5 home server, Cloudflare Tunnel, Supabase, Git, Linux \\
+\textbf{Deployment:} FastAPI, Docker, On-Device / Edge Inference, Raspberry Pi 5 home server, Supabase, Git, Linux \\
 \textbf{Practices:} Spec-Driven Development (Claude Code), Idempotent Data Pipelines
 
 %-----------EXPERIENCE-----------
@@ -90,13 +90,23 @@
 \resumeSubHeadingListStart
 
 \resumeSubheading
-{AI Engineer Intern}{Feb 2026 -- Present}
+{AI Engineer -- Research \& Development}{Oct 2026 -- Present}
+{Lenskart, New Delhi}{AI Intern: Jul 2026 -- Oct 2026}
+
+\resumeItemListStart
+\resumeItem{Own a \textbf{multilingual (English/Hindi/Hinglish) voice-to-voice conversational agent} for a \textbf{high-noise retail environment} --- took it from feasibility study to a working POC; now leading it to a \textbf{production MVP} on cloud infrastructure.}
+\resumeItem{Ran an \textbf{on-device feasibility study} of STT, TTS and SLMs on mobile hardware and benchmarked speech APIs for Indian languages --- findings drove a \textbf{cloud-first architecture}.}
+\resumeItem{Designed the real-time \textbf{turn-taking engine}: streaming \textbf{VAD}, adaptive end-of-utterance detection, a loudness gate against STT hallucination, and \textbf{barge-in} that rejects the agent's own echoed TTS; plus an \textbf{FSM orchestrator} grounding the LLM in live app state with an inline \textbf{flag-to-tool protocol} and safety escalation to humans.}
+\resumeItem{Designed an \textbf{SLM fine-tuning pipeline (Unsloth + LoRA)} with human-in-the-loop data curation; \textbf{lead an intern} on in-house STT/TTS/SLM training.}
+\resumeItemListEnd
+
+\resumeSubheading
+{AI Engineer Intern}{Feb 2026 -- Jul 2026}
 {Blu Parrot Ventures Pvt. Ltd., Gurgaon}{}
 
 \resumeItemListStart
 \resumeItem{Built a \textbf{Document-Grounded QA (DGQA)} system evaluating \textbf{450+ page defense tenders} --- \textbf{Gemini} structured extraction into \textbf{Pydantic} schemas, deterministic \textbf{7-rule eligibility checks}, and weighted bid scoring.}
 \resumeItem{Built a production \textbf{farm-advisory API} running \textbf{6 advisory engines} on \textbf{Sentinel-2 NDVI/NDWI} time-series, \textbf{Open-Meteo} weather, and \textbf{Supabase} farm data --- incl. a \textbf{least-cost LP fertilizer optimizer} and \textbf{EVI-regression yield prediction}.}
-\resumeItem{Designed a \textbf{versioned agronomy RAG pipeline} with confidence-gated LLM classification, \textbf{evidence-checked ``no-inference'' extraction}, and \textbf{ChromaDB} --- agronomists update knowledge without code deploys.}
 \resumeItem{Built a \textbf{LangGraph} multi-source assistant: \textbf{cross-lingual LaBSE retrieval}, a custom \textbf{Wikipedia MCP server}, LLM source-routing; cut request latency \textbf{23s $\rightarrow$ 5--8s} via lifespan model loading.}
 \resumeItemListEnd
 
@@ -106,10 +116,8 @@
 \resumeSubHeadingListStart
 \resumeProjectHeading{\textbf{Temple Waste Detection using YOLOv5} $|$ PyTorch, Roboflow, Python}{\href{https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5739822}{\underline{ICSRF 2025 --- SSRN}}}
 \resumeItemListStart
-    \resumeItem{Built a \textbf{first-of-its-kind temple waste classification system}, addressing an environmental problem with \textbf{0 prior published research} in this domain.}
-    \resumeItem{Collected and manually annotated \textbf{186 original images} across 3 classes, expanded to \textbf{448 labeled samples} via augmentation.}
-    \resumeItem{Trained YOLOv5s achieving \textbf{25\% mAP}, \textbf{51\% precision}, \textbf{23\% recall}, and \textbf{30 FPS} real-time inference.}
-    \resumeItem{Paper accepted and presented at ICSRF 2025; published on SSRN and indexed in Google Scholar.}
+    \resumeItem{Built a \textbf{first-of-its-kind temple waste detection system} (no prior published research): collected and annotated \textbf{186 original images} (\textbf{448} after augmentation); YOLOv5s at \textbf{51\% precision}, \textbf{30 FPS} real-time.}
+    \resumeItem{Presented at ICSRF 2025; published on SSRN and indexed in Google Scholar.}
 \resumeItemListEnd
 
 \resumeSubHeadingListEnd
@@ -121,26 +129,22 @@
 
 \resumeProjectHeading
 {\textbf{Smart Agriculture System (Plant Disease Detection)} $|$ TensorFlow, Keras, ONNX, FastAPI, Docker, Raspberry Pi 5}
-{\href{https://pifive.marutsut.me/docs\#/default/predict_predict__model_name__post}{\underline{Live API}}}
-
+{}
 \resumeItemListStart
     \resumeItem{Benchmarked \textbf{8 CNN families} (VGG-16 $\rightarrow$ MobileNetV3) under one training pipeline on \textbf{PlantVillage (20,638 images, 15 classes)}, comparing accuracy against \textbf{parameters, memory, and on-device latency}.}
-    \resumeItem{Identified the edge-efficiency frontier: \textbf{MobileNetV3-Small at 99.95\% accuracy} with \textbf{1.53M parameters} and \textbf{8 ms/image} on a Raspberry Pi 5; EfficientNetB0 matched accuracy at the lowest loss.}
-    \resumeItem{Exported all models to \textbf{ONNX} and deployed \textbf{10 of them behind one FastAPI endpoint} on a \textbf{Raspberry Pi 5} (Docker multi-arch, Cloudflare Tunnel) --- live and publicly accessible.}
+    \resumeItem{Edge winner \textbf{MobileNetV3-Small: 99.95\% accuracy}, \textbf{1.53M parameters}, \textbf{8 ms/image} on a Raspberry Pi 5; exported to \textbf{ONNX} and served \textbf{10 models behind one FastAPI endpoint} (Docker).}
 \resumeItemListEnd
 
-\resumeProjectHeading{\textbf{Ekantik Vartalap --- Source-Grounded RAG System} $|$ Python, LangChain, ChromaDB, Groq, FastAPI}{\href{https://ekantik.marutsut.me}{\underline{ekantik.marutsut.me}}}
+\resumeProjectHeading{\textbf{Ekantik Vartalap --- Source-Grounded RAG System} $|$ Python, LangChain, ChromaDB, Groq, FastAPI}{}
 \resumeItemListStart
     \resumeItem{Built a \textbf{source-grounded Hindi QA system} over 1,000+ discourse videos that responds \textbf{only when an explicit answer exists} and refuses otherwise --- \textbf{zero LLM cost on unanswerable queries}.}
-    \resumeItem{Implemented a \textbf{resumable, idempotent ingestion pipeline}: \textbf{1,000+ Hindi transcripts} with \textbf{video-level deduplication} against the vector store.}
-    \resumeItem{Indexed \textbf{$\sim$40k transcript chunks} in \textbf{ChromaDB} with \textbf{cross-lingual LaBSE embeddings} --- English queries retrieve Hindi discourse passages directly; answers assembled via a \textbf{constrained generation prompt} with mandatory source citations.}
+    \resumeItem{\textbf{Idempotent, resumable ingestion} of 1,000+ Hindi transcripts into \textbf{$\sim$40k ChromaDB chunks} with \textbf{cross-lingual LaBSE embeddings} --- English queries retrieve Hindi passages; answers carry mandatory source citations.}
 \resumeItemListEnd
 
-\resumeProjectHeading{\textbf{Lens --- Clinical Video Interpreter (Indic Speech AI)} $|$ Sarvam AI, Gemini, FastAPI, Python}{\href{https://lens.marutsut.me}{\underline{lens.marutsut.me}}}
+\resumeProjectHeading{\textbf{Lens --- Clinical Video Interpreter (Indic Speech AI)} $|$ Sarvam AI, Gemini, FastAPI, Python}{}
 \resumeItemListStart
     \resumeItem{Built an end-to-end pipeline converting \textbf{Hindi/Hinglish doctor--patient consultation videos} into structured assessments: \textbf{Sarvam Saaras v3 batch ASR + speaker diarization} $\rightarrow$ \textbf{Gemini} role assignment and classification.}
-    \resumeItem{Implemented \textbf{verbatim-substring hallucination filtering} --- every LLM-classified response is validated against the transcript before acceptance.}
-    \resumeItem{Reverse-engineered \textbf{undocumented Sarvam batch-API behaviors} and built a \textbf{diarization-failure fallback} recovering speaker roles from dialogue structure; transcription quality verified with native speakers across Hindi, Hinglish, and Punjabi.}
+    \resumeItem{\textbf{Verbatim-substring hallucination filter} on every LLM output; reverse-engineered \textbf{undocumented Sarvam batch-API behaviors} and built a \textbf{diarization-failure fallback} from dialogue structure.}
 \resumeItemListEnd
 
 \resumeSubHeadingListEnd
@@ -156,7 +160,6 @@
 %-----------ACHIEVEMENTS-----------
 \section{Achievements}
 \resumeItemListStart
-  \resumeItem{Run a \textbf{Raspberry Pi 5 home server} (\textbf{marutsut.me}) hosting \textbf{3 live public AI services} --- a 10-model plant-disease API, a Hindi RAG system, and a clinical video interpreter --- via Docker and Cloudflare Tunnel.}
   \resumeItem{Built a freestyle Acro drone achieving \textbf{144 km/h top speed} and \textbf{6 km range} with night-vision FPV camera.}
   \resumeItem{Organized a 5-day research event with \textbf{500+ attendees}; received LOR from Dean of Research.}
 \resumeItemListEnd

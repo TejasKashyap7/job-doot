@@ -20,6 +20,20 @@ One row per skill note. Verdicts follow the dossiers plus Tejas's own exclusion 
 | [[sarvam-ai]] | [[lens]] | 6-step batch ASR integration, 2 undocumented quirks reverse-engineered | strong | yes | yes |
 | [[vapi]] | [[bluparrot]] | "Shambhu" Hinglish caller — spec + dashboard config only | moderate | no | no |
 
+## Speech & Conversational AI (Lenskart, added 2026-11-11)
+
+| Skill | Projects | Strongest evidence | Verdict | LOCKED_SKILL_SET? | Resume skills section? |
+|---|---|---|---|---|---|
+| conversational-voice-agents | [[lenskart]] | owns EN/HI/Hinglish voice-to-voice agent, feasibility study → POC → prod MVP (not live) | strong (design + ownership) | yes | yes |
+| voice-activity-detection | [[lenskart]] | Silero VAD streaming engine: adaptive end-of-turn hangover, barge-in, echo rejection (own blueprint) | strong (design) | yes | yes |
+| on-device-ml-evaluation | [[lenskart]], [[smart-agri]] | mobile STT/TTS/SLM feasibility verdict; Pi 5 edge benchmark | strong | yes | yes |
+| llm-orchestration-fsm | [[lenskart]], [[job-doot]] | FSM orchestrator, layered live-state context, inline flag→tool protocol, self-correction | strong (design) | yes | yes |
+| unsloth-lora | [[lenskart]] | fine-tuning pipeline DESIGNED, not run yet | weak (until training runs) | no | no: say "designed a LoRA fine-tuning pipeline" in a bullet only |
+| stt-tts-training | [[lenskart]] | evaluating Whisper etc.; learning; nothing trained | weak | no | no |
+| whisper | [[lenskart]] | forced-alignment QA in data-collection plan | weak | no | no |
+| aws | [[lenskart]] | production target; access pending | weak | no | no |
+| team-lead-mentoring | [[lenskart]] | leads a 3-month intern on model-training track | moderate | no | yes (experience bullet) |
+
 ## Vector & Retrieval
 
 | Skill | Projects | Strongest evidence | Verdict | LOCKED_SKILL_SET? | Resume skills section? |
@@ -130,7 +144,9 @@ One row per skill note. Verdicts follow the dossiers plus Tejas's own exclusion 
 - **BCL chatbot code ownership** — the directory holds architecture docs, not running code; confirm before claiming implementation ([[bluparrot]] HF #2).
 - **Vapi agent as built/live** — spec + dashboard config only; no n8n workflows or code on disk ([[bluparrot]] HF #1).
 - **AWS / GCP / BigQuery as skills** — no AWS anywhere; GCP/BigQuery is docs-only company architecture.
-- **LoRA / fine-tuning of LLMs** — not ready; no evidence in any dossier.
+- **LoRA / fine-tuning of LLMs** — (updated 2026-11-11) may say *designed* an Unsloth + LoRA fine-tuning pipeline at [[lenskart]]; do NOT say *trained / fine-tuned* any LLM, SLM, STT or TTS model until a run actually happens.
+- **Lenskart confidential detail** — no product/codename, exact use case, device, vendor, rollout plan, internal numbers or leadership context in any public text; no users/latency/accuracy claims (not live). See [[lenskart]] honesty flags.
+- **"AWS / GCP / BigQuery as skills"** caveat still holds: AWS is a target at Lenskart, not yet hands-on.
 - **SQL / SQLAlchemy / APScheduler / BeautifulSoup as personal skills** — Claude-written plumbing per Tejas's own ruling; claim the architecture decisions, not the libraries.
 - **React / TypeScript / Vite / Tailwind CSS / Framer Motion as personal skills** — Tejas ruling 2026-06-12: frontends were Claude-implemented; he has seen the implementations but cannot claim them. The Lens *product* and its pipeline remain claimable; the frontend stack does not. AppScript replaces TypeScript in Languages.
 - Also handle with care: "MMR for diversity" (λ=1 turns it off), "1300+ videos" (say 1,004 ingested), 99.95% accuracy (lab images; full-dataset 99.67%), "beat centralized" (+0.2pp within noise — say "matched"), job-doot throughput numbers (spec estimates, never run in production).

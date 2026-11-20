@@ -5,10 +5,13 @@ type: hub
 
 # Tejas Project Vault
 
-Welcome. This vault is the evidence-checked record of everything Tejas has actually built — six exhaustive project dossiers (each grounded in file-level code verification, live-endpoint checks, and explicit honesty flags), a skill-graph layer of 53 individual skill notes with strong/moderate/weak/exclude verdicts, and a master matrix tying them together. Its purpose is simple: every resume bullet, skill claim, and interview answer should trace back to something verifiable here — and anything that can't is flagged "do not claim".
+> **Start at [[PROFILE]]**: the single source of truth for who Tejas is today (role, pitches, preferences). Copy every resume line, LinkedIn edit or intro from there. Confidential employer notes live in `private/` (git-ignored, Mac + Pi only).
+
+Welcome. This vault is the evidence-checked record of everything Tejas has actually built — seven project dossiers (six code-verified projects plus the Lenskart employer dossier) (each grounded in file-level code verification, live-endpoint checks, and explicit honesty flags), a skill-graph layer of 53 individual skill notes with strong/moderate/weak/exclude verdicts, and a master matrix tying them together. Its purpose is simple: every resume bullet, skill claim, and interview answer should trace back to something verifiable here — and anything that can't is flagged "do not claim".
 
 ## Project dossiers
 
+- [[lenskart]]: **current job (AI Engineer – R&D, full-time since Oct 2026; intern Jul–Oct)**. Multilingual voice-to-voice conversational agent for noisy retail: on-device feasibility study → POC → cloud production MVP; turn-taking/barge-in engine; SLM LoRA pipeline design; leads an intern. Public-safe tier only.
 - [[lens]] — one-day Indic medical-video pipeline: Sarvam ASR + diarization → Gemini role/classification with a verbatim hallucination filter; React/TS demo site; built as a LensKart cold-pitch POC.
 - [[bluparrot]] — internship work, 13+ projects: 6-engine satellite/weather farm-advisory platform, Tanzania RAG family, DGQA 450-page tender extraction, Pinecone insurance chatbot, LangGraph SQL agent, cross-lingual MCP RAG, HS-code chatbot, Vapi voice-agent spec.
 - [[ekantik]] — live source-grounded Hindi RAG over 1,004 discourse transcripts (684 MB ChromaDB + LaBSE on the Pi) at ekantik.marutsut.me; LangChain self-study capstone.
