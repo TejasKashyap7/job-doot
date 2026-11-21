@@ -86,8 +86,8 @@ def tailor_for_job(db: Session, job: Job, user: User) -> Resume:
 
     tailoring_failed = False
     try:
-        if not keys:
-            raise RuntimeError(f"User {user.username} has no active Groq keys")
+        # Vasu instance: LLM runs through the Claude shim (claude_client ignores
+        # api_keys), so an empty Groq key list is fine — don't hard-fail here.
         for rnd in range(1, MAX_ROUNDS + 1):
             iteration = rnd
             log.info("[job %d / user %s] round %d: critic", job.id, user.username, rnd)

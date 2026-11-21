@@ -119,8 +119,8 @@ def parse_profile_export(raw_text: str) -> dict:
     result["telegram_chat_id"] = str(telegram.get("chat_id")) if result["telegram_enabled"] and telegram.get("chat_id") else None
 
     keys = data.get("groq_keys") or []
-    if not isinstance(keys, list) or not keys:
-        raise ProfileImportError("groq_keys must be a non-empty list — tailoring needs at least one key")
+    if not isinstance(keys, list):
+        raise ProfileImportError("groq_keys must be a list (may be empty on a Claude-only instance)")
     result["groq_keys"] = [str(k).strip() for k in keys if str(k).strip()]
 
     suggested_username = data.get("username")
