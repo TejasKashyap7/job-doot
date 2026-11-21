@@ -32,15 +32,14 @@ import services.alerts as alerts_svc
 log = logging.getLogger(__name__)
 
 KEYWORDS = [
-    # core AI/ML engineering
-    "AI Engineer", "Machine Learning Engineer", "Deep Learning Engineer",
-    "Computer Vision Engineer", "LLM Engineer", "GenAI Engineer", "NLP Engineer",
-    # research / R&D — the roles Tejas actually targets (rubric filters applied/consulting)
-    "AI Research Engineer", "Machine Learning Researcher", "Research Scientist",
-    "Applied Scientist", "Deep Learning Research", "LLM Research",
-    "Foundation Model", "AI Agent Engineer", "Agentic AI",
+    # Vasu — most preferred: GenAI / agentic / applied LLM-RAG
+    "GenAI Engineer", "Generative AI Engineer", "LLM Engineer", "AI Engineer",
+    "AI Agent Engineer", "Agentic AI", "Applied AI Engineer", "RAG Engineer",
+    # also good: core ML / NLP engineering
+    "Machine Learning Engineer", "NLP Engineer", "Deep Learning Engineer",
+    "Applied Scientist",
 ]
-LOCATIONS = ["Gurgaon", "Delhi", "Noida", "Pune", "Remote"]
+LOCATIONS = ["Gurgaon", "Gurugram", "Delhi", "Noida", "Remote"]
 
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
