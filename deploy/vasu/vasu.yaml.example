@@ -1,0 +1,53 @@
+# Applier profile for Vasu — copy to applier/profiles/vasu.yaml (git-ignored) and fill in.
+# Settings mirror Tejas's live profile (vishal.yaml on the Pi), with the LinkedIn cap from VASU-HANDOFF.md §1.
+name: vasu
+chromium: /usr/bin/google-chrome            # Google Chrome .deb inside WSL (Ubuntu's apt chromium is a snap — avoid)
+browser_profile_dir: ~/.config/jobdoot-applier   # this machine's OWN profile; log the LinkedIn account in here once
+debug_port: 9223
+claude_bin: ~/.local/bin/claude             # `which claude` inside WSL; must be logged in (claude -> /login)
+models: {primary: haiku, retry: sonnet}     # Haiku drives the form agent, Sonnet only on retry
+backend_container: jobhunter-backend
+resume_pdf: ~/job-doot/data/applier/vasu_resume.pdf
+pick_jobs_from_user_id: 1                   # Vasu's users.id in HIS jobs.db (1 if he signed up first)
+notify_user_id: 1
+timezone: Asia/Kolkata
+
+# ---- pacing (offset from Tejas: his slots run 09–22 on the same Wi-Fi/IP) ----
+active_hours: [11, 23]
+slots_per_day: [8, 10]
+max_per_slot: 2
+max_views_per_slot: 15
+min_slot_gap_min: 20
+digest_time: "23:30"
+health_check_windows: [["08:00", "08:25"], ["23:20", "23:45"]]   # Tejas's are 08:30–08:55 / 22:50–23:15
+
+# ---- LinkedIn cap: UNDER 20/day (VASU-HANDOFF.md §1). Never raise without Tejas. ----
+daily_targets: [["2026-11-22", "2099-12-31", 15]]
+topup_search: true                # pool ran dry and under target -> Easy Apply LinkedIn search
+catchup_time: "19:00"
+
+# ---- PHASE A (dummy LinkedIn account, like Tejas's own test) ----
+test_mode: true                   # unknown questions get made-up answers + are COLLECTED; that's the point
+daily_target: fetched             # fallback only; daily_targets above wins
+source: db
+offsite: true
+include_offsite: true
+search_keywords: ["AI Engineer", "Machine Learning Engineer", "GenAI Engineer", "LLM Engineer"]
+search_location: India
+min_score: 0
+# ---- PHASE B (Vasu's REAL account — only when Tejas says go): set test_mode: false, min_score: 7 ----
+
+# Only these facts may be used to answer form questions. Keep them TRUE (Phase B uses them for real).
+facts: |
+  Name: ...
+  Email: ...
+  Phone: ... (country code +91)
+  Gender: ...
+  Location: ...
+  Education: ...
+  Skills: ...
+  Work experience: ...
+  Notice period: ...
+  Current / expected salary: ...
+  Willing to relocate: ...
+  Citizenship / work authorization: ...

@@ -1,0 +1,25 @@
+# systemd USER unit for Vasu's PC (WSL2 Ubuntu + WSLg). Adapted from applier/applier.service (Pi).
+# One checkout on this machine: ~/job-doot (branch user/vasu-setup) runs BOTH docker compose and the applier.
+# Install (inside WSL, systemd must be on — see VASU-HANDOFF.md step 2):
+#   mkdir -p ~/.config/systemd/user && cp deploy/vasu/applier.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now applier
+#   sudo loginctl enable-linger "$USER"      # keep user services alive without an open terminal
+[Unit]
+Description=job-doot apply agent (LinkedIn Easy Apply) — Vasu
+After=default.target
+
+[Service]
+WorkingDirectory=%h/job-doot
+# WSLg serves its Wayland/X sockets here. If Chrome can't open a window from the service,
+# check `ls /mnt/wslg/runtime-dir` and `echo $WAYLAND_DISPLAY $DISPLAY` in a normal shell and copy them.
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
+Environment=DISPLAY=:0
+Environment=APPLIER_DATA=%h/job-doot/data/applier
+# CHANGE `vasu` if the profile file has another name (applier/profiles/<name>.yaml)
+ExecStart=%h/.venvs/applier311/bin/python -m applier.run daemon --profile vasu
+Restart=on-failure
+RestartSec=120
+
+[Install]
+WantedBy=default.target
