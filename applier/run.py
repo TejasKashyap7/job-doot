@@ -230,8 +230,11 @@ def today_progress(cfg) -> tuple[int, int, str] | None:
         except Exception:
             log.exception("could not read today's fetched count — using normal pacing")
             return None
+    # VASU-HANDOFF §1: the fixed daily_targets cap counts LinkedIn applies only
+    # (offsite/company-site applies are uncapped). See apply-agent/linkedin-cap.md.
     applied = store.applied_since(store.connect(), cfg["name"],
-                                  midnight.replace(tzinfo=None).isoformat(timespec="seconds"))
+                                  midnight.replace(tzinfo=None).isoformat(timespec="seconds"),
+                                  linkedin_only=(label == "fixed"))
     return target, applied, label
 
 

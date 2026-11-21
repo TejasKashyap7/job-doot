@@ -169,10 +169,14 @@ def record_made_up(conn, applicant, items, job_id) -> int:
     return new
 
 
-def applied_since(conn, applicant, since_local_iso: str) -> int:
-    return conn.execute(
-        "SELECT count(*) FROM attempts WHERE applicant=? AND status='applied' AND created_at>=?",
-        (applicant, since_local_iso)).fetchone()[0]
+def applied_since(conn, applicant, since_local_iso: str, linkedin_only: bool = False) -> int:
+    # VASU-HANDOFF §1: the daily cap counts only LinkedIn Easy Apply. Offsite
+    # successes log detail 'offsite:...'; LinkedIn logs 'submitted'. See
+    # .claude/specs/apply-agent/linkedin-cap.md.
+    sql = "SELECT count(*) FROM attempts WHERE applicant=? AND status='applied' AND created_at>=?"
+    if linkedin_only:
+        sql += " AND COALESCE(detail,'') NOT LIKE 'offsite:%'"
+    return conn.execute(sql, (applicant, since_local_iso)).fetchone()[0]
 
 
 def add_views(conn, day: str, n: int) -> None:
