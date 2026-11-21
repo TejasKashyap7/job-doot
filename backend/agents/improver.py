@@ -9,7 +9,7 @@ import logging
 import re
 from typing import TypedDict
 
-from services.groq_client import chat_text
+from services.claude_client import chat_text
 
 log = logging.getLogger(__name__)
 
@@ -59,5 +59,5 @@ def improve(system_prompt: str, latex_resume: str, job_title: str, company: str,
         f"Rewrite the LaTeX to address the shortcomings above, obeying the absolute rules. "
         f"Use the exact delimiter format specified."
     )
-    raw = chat_text(system_prompt, user_msg, api_keys=api_keys, temperature=0.3, max_tokens=6000)
+    raw = chat_text(system_prompt, user_msg, api_keys=api_keys, temperature=0.3, max_tokens=6000, model="sonnet")
     return _parse(raw, fallback_latex=latex_resume)

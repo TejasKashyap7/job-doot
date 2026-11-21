@@ -5,7 +5,7 @@ import logging
 from typing import TypedDict
 
 from agents.prompts import CRITIC_SYSTEM
-from services.groq_client import chat_json
+from services.claude_client import chat_json
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def review(latex_resume: str, job_title: str, company: str, jd: str,
         f"--- RESUME (LaTeX source) ---\n{latex_resume}\n"
         f"--- END RESUME ---"
     )
-    raw = chat_json(CRITIC_SYSTEM, user_msg, api_keys=api_keys, temperature=0.2, max_tokens=1500)
+    raw = chat_json(CRITIC_SYSTEM, user_msg, api_keys=api_keys, temperature=0.2, max_tokens=1500, model="sonnet")
     # normalize
     shortcomings = raw.get("shortcomings") or []
     verdict = (raw.get("verdict") or "NEEDS WORK").upper().strip()

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from agents.prompts import build_scorer_system
 from database.models import Job, JobUserState, User
-from services.local_llm_client import chat_json
+from services.claude_client import chat_json
 from services import telegram as tg
 import services.alerts as alerts_svc
 
