@@ -29,3 +29,6 @@ tools/*.session
 applier/profiles/*.yaml
 !applier/profiles/example.yaml
 data/applier/
+
+# Vasu: all runtime/secret JSON under data (notify_state, Google credentials.json/token.json, etc.)
+data/*.json
