@@ -25,6 +25,7 @@ from services.auth import (
 )
 from services.profile_import import parse_profile_export, ProfileImportError
 import services.alerts as alerts_svc
+import services.answers as answers_svc
 import services.notifications as notif_svc
 import services.problem_tags as problem_tags
 from services.scraper import save_li_at, has_li_at
@@ -354,6 +355,43 @@ async def signup_submit(
         max_age=LOGIN_COOKIE_MAX_AGE,
     )
     return resp
+
+
+# ---------------- Answers (profile intake + parked questions) ----------------
+
+@app.get("/answers", response_class=HTMLResponse)
+def answers_view(request: Request, current_user: User = Depends(require_login)):
+    """Questions the applier needs the person to answer: proactive profile intake (address,
+    etc.) plus parked form questions (qa_bank). Answers feed the applier's brain for reuse."""
+    applicant = current_user.username
+    return templates.TemplateResponse("answers.html", {
+        "request": request, "current_user": current_user, "nav": "answers",
+        "intake": answers_svc.pending_intake(applicant),
+        "outstanding": answers_svc.outstanding(applicant),
+    })
+
+
+@app.post("/answers/question/{qa_id}")
+def answers_save_question(qa_id: int, answer: str = Form(...),
+                          current_user: User = Depends(require_login)):
+    if not answers_svc.save_question(current_user.username, qa_id, answer):
+        raise HTTPException(status_code=400, detail="empty answer or question not found")
+    return {"ok": True}
+
+
+@app.post("/answers/intake/{group_id}")
+async def answers_save_intake(group_id: str, request: Request,
+                              current_user: User = Depends(require_login)):
+    form = await request.form()
+    if not answers_svc.save_intake(current_user.username, group_id, dict(form)):
+        raise HTTPException(status_code=400, detail="unknown group or missing required fields")
+    return {"ok": True}
+
+
+@app.get("/answers/help/{qa_id}")
+def answers_help(qa_id: int, current_user: User = Depends(require_login)):
+    """Plain-language rephrase + example for one parked question (generated via Claude, cached)."""
+    return answers_svc.help_for_id(current_user.username, qa_id)
 
 
 # ---------------- Admin dashboard ----------------

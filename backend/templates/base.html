@@ -13,7 +13,7 @@
 {# Look: .claude/specs/dashboard/ui-redesign-night.md ("A · Night rings") #}
 {% from "_ui.html" import icon %}
 {% set authed = current_user is defined and current_user %}
-{% set nav_items = [("today", "/", "Today"), ("jobs", "/jobs", "Jobs"), ("insights", "/insights", "Insights"), ("blockers", "/needs-you", "Blockers")] %}
+{% set nav_items = [("today", "/", "Today"), ("jobs", "/jobs", "Jobs"), ("insights", "/insights", "Insights"), ("blockers", "/needs-you", "Blockers"), ("answers", "/answers", "Answers")] %}
 {% if authed and current_user.is_admin %}{% set nav_items = nav_items + [("admin", "/admin", "Admin")] %}{% endif %}
 
 {% if authed %}

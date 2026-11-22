@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% set nav = "answers" %}
+{% from "_ui.html" import page_head with context %}
+{% block title %}Answers · job-doot{% endblock %}
+{% block body %}
+{{ page_head("Answers", sub="Questions the applier needs you to answer — saved once, reused automatically") }}
+
+<style>
+  .ans-card { margin-bottom: 14px; }
+  .ans-card h2, .ans-title { font-size: 1.05rem; margin: 0 0 4px; }
+  .ans-card .muted { margin: 0 0 12px; }
+  .ans-explain { margin: 0 0 6px; font-size: .92rem; }
+  .ans-eg { margin: 0 0 10px; font-size: .86rem; color: var(--good, #7cf0c0); }
+  .ans-exact { margin: 0 0 12px; }
+  .ans-exact summary { cursor: pointer; font-size: .8rem; color: var(--t3, #8a8a92); }
+  .ans-exact p { margin: 6px 0 0; font-size: .85rem; color: var(--t2, #b9b9c0); }
+  .ans-form { display: flex; flex-direction: column; gap: 12px; }
+  .ans-field { display: flex; flex-direction: column; gap: 5px; font-size: .9rem; }
+  .ans-field span { color: var(--t2, #b9b9c0); font-weight: 600; }
+  .ans-help { color: var(--t3, #8a8a92); font-size: .82rem; line-height: 1.4; margin: -2px 0 1px; }
+  .ans-field input::placeholder { color: var(--t3, #6b6b73); }
+  .ans-field input, .ans-field select {
+    padding: 11px 12px; font-size: 1rem; border-radius: 10px;
+    border: 1px solid var(--s3, #2a2a31); background: var(--s1, #111115); color: inherit; width: 100%;
+  }
+  .ans-actions { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+  .ans-status { font-size: .9rem; color: var(--good, #7cf0c0); }
+  .ans-card--done { opacity: .5; transition: opacity .3s; }
+</style>
+
+{% if not intake and not outstanding %}
+  <p class="empty">All caught up — no questions waiting. New ones show up here as the applier hits them.</p>
+{% endif %}
+
+{% for g in intake %}
+<section class="card ans-card" id="intake-{{ g.id }}">
+  <h2>{{ g.title }}</h2>
+  <p class="muted">{{ g.intro }}</p>
+  <form class="ans-form" data-endpoint="/answers/intake/{{ g.id }}">
+    {% for f in g.fields %}
+    <label class="ans-field">
+      <span>{{ f.label }}{% if f.required %} *{% endif %}</span>
+      {% if f.help %}<small class="ans-help">{{ f.help }}</small>{% endif %}
+      {% if f.options %}
+      <select name="{{ f.name }}"{% if f.required %} required{% endif %}>
+        <option value="" disabled selected>Choose…</option>
+        {% for o in f.options %}<option>{{ o }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <input name="{{ f.name }}" value="{{ f.default or '' }}" placeholder="{{ f.placeholder or '' }}" autocomplete="off"{% if f.required %} required{% endif %}>
+      {% endif %}
+    </label>
+    {% endfor %}
+    <div class="ans-actions"><button type="submit" class="btn">Save</button><span class="ans-status"></span></div>
+  </form>
+</section>
+{% endfor %}
+
+{% for q in outstanding %}
+<section class="card ans-card{{ ' ans-needhelp' if not q.help else '' }}" id="q-{{ q.id }}" data-qid="{{ q.id }}">
+  <h2 class="ans-title">{{ q.help.simple if (q.help and q.help.simple) else q.question }}</h2>
+  <p class="ans-explain muted">{{ q.help.explain if q.help else 'Putting this into simpler words…' }}</p>
+  <p class="ans-eg"{% if not (q.help and q.help.example) %} hidden{% endif %}>{% if q.help and q.help.example %}Example: {{ q.help.example }}{% endif %}</p>
+  <details class="ans-exact"><summary>See the exact wording from the form</summary><p>{{ q.question }}</p></details>
+  <form class="ans-form" data-endpoint="/answers/question/{{ q.id }}">
+    <label class="ans-field">
+      <span>Your answer</span>
+      {% if q.options %}
+      <select name="answer" required>
+        <option value="" disabled selected>Choose…</option>
+        {% for o in q.options %}<option>{{ o }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <input name="answer" autocomplete="off" placeholder="{{ q.help.example if (q.help and q.help.example) else '' }}" required>
+      {% endif %}
+    </label>
+    <div class="ans-actions"><button type="submit" class="btn">Save</button><span class="ans-status"></span></div>
+  </form>
+</section>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Fill plain-language help for any parked question that wasn't cached yet.
+document.querySelectorAll('.ans-card.ans-needhelp').forEach(async (card) => {
+  try {
+    const res = await fetch('/answers/help/' + card.dataset.qid);
+    if (!res.ok) return;
+    const h = await res.json();
+    if (h.simple) card.querySelector('.ans-title').textContent = h.simple;
+    const ex = card.querySelector('.ans-explain');
+    if (ex) ex.textContent = h.explain || '';
+    const eg = card.querySelector('.ans-eg');
+    if (eg && h.example) { eg.textContent = 'Example: ' + h.example; eg.hidden = false; }
+    const inp = card.querySelector('input[name=answer]');
+    if (inp && h.example) inp.placeholder = h.example;
+  } catch (e) {}
+});
+
+// Save a card: POST -> on 200, confirm and remove the box.
+document.querySelectorAll('.ans-form').forEach((form) => {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const status = form.querySelector('.ans-status');
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    status.style.color = '';
+    status.textContent = 'Saving…';
+    try {
+      const res = await fetch(form.dataset.endpoint, { method: 'POST', body: new FormData(form) });
+      if (res.ok) {
+        status.textContent = 'Saved ✓';
+        const card = form.closest('.ans-card');
+        card.classList.add('ans-card--done');
+        setTimeout(() => {
+          card.remove();
+          if (!document.querySelector('.ans-card')) location.reload();
+        }, 700);
+      } else {
+        status.style.color = '#ff8f8f';
+        status.textContent = res.status === 400 ? 'Fill the required (*) fields' : 'Could not save — try again';
+        btn.disabled = false;
+      }
+    } catch (err) {
+      status.style.color = '#ff8f8f';
+      status.textContent = 'Network error — try again';
+      btn.disabled = false;
+    }
+  });
+});
+</script>
+{% endblock %}

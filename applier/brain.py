@@ -195,7 +195,16 @@ or answer No.
 - Resume / CV upload: the applicant's resume file ({resume_name}) is ALWAYS available — use
   action "upload_resume" on the file input or the upload / attach button. Never ask the human
   for the resume and never put a resume / CV field in "unknown".
-- Never enter a password, create an account, pay, or solve a CAPTCHA: status "ask_human" with why.
+- ACCOUNT CREATION (company / ATS careers sites only, NEVER LinkedIn): if applying requires
+  signing in or registering, CREATE the account — fill the sign-up form from the facts and type
+  the "Account password" from the facts into the password and confirm-password fields. Prefer
+  "create account" / "register" over "sign in". Do not stop for this.
+- EMAIL CODE: if a company site says it emailed a verification / one-time code and shows a code
+  box, use action "email_code" on that code field — the system reads the code from the applicant's
+  inbox and fills it. First click any "send code" / "continue" button, then use "email_code" on the
+  next view. Only for codes emailed to the applicant; never for authenticator-app or SMS codes.
+- Still never pay or solve a CAPTCHA, and never create an account or enter a password on LinkedIn:
+  status "ask_human" with why.
 
 ACTIONS (do them in order; put ALL the fields of this page in one reply, then at most ONE
 click that moves on — Next / Continue / Review / Submit / Apply — as the LAST action):
@@ -204,6 +213,7 @@ click that moves on — Next / Continue / Review / Submit / Apply — as the LAS
   {{"do":"select","n":N,"option":"..."}}      <select> dropdowns (role select) only
   {{"do":"check","n":N,"on":true}}            checkbox on/off
   {{"do":"upload_resume","n":N}}              file input or upload button
+  {{"do":"email_code","n":N}}                 fill the code emailed to the applicant (company sites only)
   {{"do":"key","key":"Enter"|"Escape"|"Tab"}}
   {{"do":"scroll","dir":"down"|"up"}}
   {{"do":"back"}}                             browser back
@@ -253,12 +263,12 @@ PAGE TEXT (trimmed):
 {text}
 """
 
-ALLOWED = {"click", "type", "select", "check", "upload_resume", "key", "scroll", "back", "wait"}
+ALLOWED = {"click", "type", "select", "check", "upload_resume", "email_code", "key", "scroll", "back", "wait"}
 RESUME_Q = re.compile(r"\b(resume|résumé|cv|curriculum vitae)\b", re.I)
 STATUSES = {"continue", "applied", "ask_human", "give_up", "need_screenshot"}
 
 
-def _validate_plan(data: dict, snap: dict) -> dict:
+def _validate_plan(data: dict, snap: dict, allow_account: bool = False) -> dict:
     by_n = {e["n"]: e for e in snap["elements"]}
     status = data.get("status")
     if status not in STATUSES:
@@ -268,7 +278,7 @@ def _validate_plan(data: dict, snap: dict) -> dict:
         do = a.get("do")
         if do not in ALLOWED:
             raise BrainError(f"action not allowed: {a}")
-        if do in ("click", "type", "select", "check", "upload_resume"):
+        if do in ("click", "type", "select", "check", "upload_resume", "email_code"):
             try:
                 a["n"] = int(a.get("n"))
             except (TypeError, ValueError):
@@ -276,7 +286,7 @@ def _validate_plan(data: dict, snap: dict) -> dict:
             if a["n"] not in by_n:
                 raise BrainError(f"element [{a['n']}] does not exist")
             el = by_n[a["n"]]
-            if el["role"] == "password":
+            if el["role"] == "password" and not allow_account:
                 raise BrainError("tried to touch a password field")
             if el["region"] == "search" and do in ("type", "select"):
                 raise BrainError(f"tried to fill the site's search bar [{a['n']}]")
@@ -327,10 +337,11 @@ def next_actions(cfg, snap: dict, rendered: str, job: dict, qa: list[dict], hist
         elements=rendered, text=snap["text"],
     )
     last = None
+    allow_account = bool(cfg.get("account_password")) and "linkedin.com" not in (snap.get("url") or "")
     for model in (cfg["models"]["primary"], cfg["models"]["retry"]):
         try:
             data = _call(cfg, prompt, model, image)
-            plan = _validate_plan(data, snap)
+            plan = _validate_plan(data, snap, allow_account)
             plan["made_up"] = _made_up(cfg, data)
             return plan
         except BrainQuota:

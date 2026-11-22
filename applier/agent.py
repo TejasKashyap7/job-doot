@@ -121,6 +121,8 @@ class Agent:
         self.note = ""
         self.steps = 0
         self.left_scope = 0
+        self.otp_since = time.time()   # only accept verification emails that arrive after we start
+        self.keep_pages: list = []     # tabs to leave OPEN for the human (e.g. a CAPTCHA, already filled)
         self.new_pages: list = []
         self.ctx.on("page", lambda p: self.new_pages.append(p))
 
@@ -163,7 +165,7 @@ class Agent:
 
     def _close_extra_tabs(self):
         for p in list(self.ctx.pages):
-            if p is not self.start_page and not p.is_closed():
+            if p is not self.start_page and p not in self.keep_pages and not p.is_closed():
                 try:
                     p.close()
                 except Exception:
@@ -237,6 +239,11 @@ class Agent:
                 fc.value.set_files(pdf)
             pause(2.5, 4.5)
             return f"uploaded the resume via {name}"
+        if do == "email_code":
+            from . import otp
+            code = otp.fetch_code(self.cfg, since=self.otp_since)
+            self.human.type(el, code)
+            return f"typed the emailed verification code into {name}"
         raise RuntimeError(f"unknown action {do}")
 
     # ---------- stops the AI cannot override ----------
@@ -251,8 +258,13 @@ class Agent:
             except Exception:
                 cap = None
             if cap:
-                return "skipped", f"needs_human:captcha ({cap}) | {url}"
-        if snap["password"] and not _is_linkedin(url):
+                try:
+                    self.page.bring_to_front()          # leave it on top so the human just solves it
+                except Exception:
+                    pass
+                self.keep_pages.append(self.page)       # and don't close this filled-in tab
+                return "skipped", f"needs_human:captcha ({cap}) — tab left open for you to solve | {url}"
+        if snap["password"] and not _is_linkedin(url) and not self.cfg.get("account_password"):
             return "skipped", f"needs_human:account / sign-in required | {url}"
         if snap["card"]:
             return "skipped", f"needs_human:payment page | {url}"
