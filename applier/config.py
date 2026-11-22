@@ -26,6 +26,7 @@ DEFAULTS = {
     "daily_target": None,
     # Volume test (approach.md, 2026-11-20): fixed target per IST date range, wins over daily_target
     "daily_targets": None,        # [["2026-11-20", "2026-11-27", 20], ...] inclusive
+    "suggest_for": None,          # "tejas": make Answers-tab suggestions for this applicant daily
     "daily_extra": None,          # [1, 5]: add random 1-5 to the daily_targets number (same all day)
     "topup_search": False,        # out of fetched jobs and under target => Easy Apply LinkedIn search
     "topup_searches": 3,          # max searches per slot
