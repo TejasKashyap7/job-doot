@@ -1,0 +1,24 @@
+{"id": 1, "question": "First name / Last name", "category": "identity", "rule": "facts", "guidance": "split the full name.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 2, "question": "Email address", "category": "identity", "rule": "facts", "guidance": "From facts.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 3, "question": "Phone / mobile number", "category": "identity", "rule": "facts", "guidance": "with country code.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 4, "question": "LinkedIn profile URL", "category": "identity", "rule": "facts", "guidance": "leave blank if none.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 5, "question": "Are you legally authorized to work in <country>?", "category": "eligibility", "rule": "facts", "guidance": "authorized in India; sponsorship needed elsewhere.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 6, "question": "Do you now or will you require visa sponsorship?", "category": "eligibility", "rule": "facts", "guidance": "no for India; yes outside India.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 7, "question": "Notice period", "category": "eligibility", "rule": "facts", "guidance": "From facts.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 8, "question": "Current CTC / current salary", "category": "compensation", "rule": "ask", "guidance": "private; from their saved answer.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 9, "question": "Expected CTC / expected salary", "category": "compensation", "rule": "ask", "guidance": "private; from their saved answer.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 10, "question": "Total years of experience", "category": "experience", "rule": "facts", "guidance": "From facts.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 11, "question": "Years of experience with <specific tech>", "category": "experience", "rule": "facts", "guidance": "0 if the tech isn't listed.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 12, "question": "Highest qualification / degree", "category": "experience", "rule": "facts", "guidance": "From facts.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 13, "question": "Willing to relocate?", "category": "location", "rule": "facts", "guidance": "From facts.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 14, "question": "Gender", "category": "identity", "rule": "facts", "guidance": "else \"Prefer not to say\".", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 15, "question": "Resume / CV upload", "category": "documents", "rule": "facts", "guidance": "Always available — upload the applicant's resume file.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 16, "question": "Cover letter / Why do you want to join? / Tell us about yourself", "category": "free-text", "rule": "facts", "guidance": "3–4 honest sentences from facts + the job; never invent experience.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 17, "question": "Full postal / house address (Address line 1)", "category": "location", "rule": "ask", "guidance": "collected via the Admin/Answers tab.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 18, "question": "PIN code / postal code / ZIP", "category": "location", "rule": "ask", "guidance": "part of the address set.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 19, "question": "City / District / State / Country", "category": "location", "rule": "ask", "guidance": "part of the address set.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 20, "question": "Government ID — PAN / Aadhaar / passport / SSN / national ID", "category": "sensitive", "rule": "never", "guidance": "always route to the human.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 21, "question": "Date of birth", "category": "sensitive", "rule": "ask", "guidance": "don't guess.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 22, "question": "How did you hear about us?", "category": "screening", "rule": "ask", "guidance": "Safe default \"LinkedIn\" (where most of our applies come from); or ask the person.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 23, "question": "Were you previously employed here (former employee / contingent / temporary / consultant)?", "category": "screening", "rule": "ask", "guidance": "Usually \"No\" — ask the person if unsure.", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
+{"id": 24, "question": "Phone device type (mobile / landline / etc.)", "category": "identity", "rule": "facts", "guidance": "\"Mobile\".", "wordings": [], "added": "2026-11-22", "added_by": "vasu"}
