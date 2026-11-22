@@ -336,6 +336,12 @@ def daemon(cfg):
                         log.info(qbank.sync(cfg))
                     except Exception:
                         log.exception("qbank sync failed — will retry tomorrow")
+                    try:   # suggested answers for the owner's Answers tab (local only)
+                        from . import suggest
+                        if cfg.get("suggest_for"):
+                            log.info("suggestions made: %d", suggest.run(cfg, cfg["suggest_for"]))
+                    except Exception:
+                        log.exception("answer suggestions failed — will retry tomorrow")
             except Exception as exc:
                 log.exception("%s failed", kind)
                 if kind in ("slot", "sweep"):
