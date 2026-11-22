@@ -747,23 +747,25 @@ def _is_owner(user: User) -> bool:
 
 
 @app.get("/answers", response_class=HTMLResponse)
-def answers_view(request: Request, current_user: User = Depends(require_login), saved: int | None = None):
+def answers_view(request: Request, current_user: User = Depends(require_login)):
     """Tejas's real answers to the shared question bank. Spec: .claude/specs/question-bank/spec.md."""
     if not _is_owner(current_user):
         return RedirectResponse("/", status_code=303)
     from services import answers
     return templates.TemplateResponse("answers.html", {
-        "request": request, "current_user": current_user, "d": answers.build(), "saved": saved,
+        "request": request, "current_user": current_user, "d": answers.build(),
     })
 
 
-@app.post("/answers")
-async def answers_save(request: Request, current_user: User = Depends(require_login)):
+@app.post("/answers/q/{qid}")
+def answers_save_one(qid: int, answer: str = Form(""), current_user: User = Depends(require_login)):
+    """Save one card (Vasu-style): 200 -> the card disappears. Empty answer = remove it."""
     if not _is_owner(current_user):
-        return RedirectResponse("/", status_code=303)
+        raise HTTPException(status_code=403, detail="owner only")
     from services import answers
-    n = answers.save(dict(await request.form()))
-    return RedirectResponse(f"/answers?saved={n}", status_code=303)
+    if not answers.save_one(qid, answer):
+        raise HTTPException(status_code=400, detail="unknown question")
+    return {"ok": True}
 
 
 @app.get("/insights", response_class=HTMLResponse)

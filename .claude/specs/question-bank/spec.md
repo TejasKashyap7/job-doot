@@ -76,6 +76,22 @@ own applier, and both hit the same application form questions. One shared bank k
   `rule: never` entries are shown read-only ("never filled automatically") and can't be saved.
 - Visible only to the owner (admin or `SUMMARY_USER_ID`).
 - Clearing a box deletes that saved answer.
+
+### Vasu-style saving + suggested answers (Tejas, 2026-11-23)
+- **One card per question, saved on its own** (like Vasu's tab): `POST /answers/q/<id>` returns
+  200 → the card shows "Saved ✓", fades and disappears. Errors show on the card and keep it.
+  Answered questions move to a collapsed "Answered" section where they can still be edited.
+- **3 suggested answers per question**, shown as tap-to-pick chips, plus a "Something else" box
+  for typing your own. Picking a chip fills the box; Save stores whatever is in the box.
+- Suggestions come from `applier/suggest.py` (runs on the Pi, after the daily bank sync and on
+  demand): Haiku reads Tejas's `.claude/research/PROFILE.md` (never `private/`) and proposes up
+  to 3 short answers per unanswered `ask`/`facts` question. Stored in the local applier DB table
+  `qa_suggest(question, options, made_at)`. **Never pushed to the shared bank** (personal data).
+- Identity questions (pronouns, gender, religion, caste, disability, ethnicity, sexual
+  orientation): never guess from the profile or name; offer the standard neutral options,
+  including "Prefer not to say".
+- Values not in the profile (salary, DOB, address): suggestions are clearly guesses or formats;
+  the person decides.
 - One text box per question. Saving writes/updates the `applicant = "tejas"` row. It shows
   answered/total.
 - Banner: "These are your real answers for your own account. They are NOT used while the test

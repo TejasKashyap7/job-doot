@@ -4,7 +4,8 @@ Spec: .claude/specs/question-bank/spec.md. Questions come from the shared bank c
 (data/qbank/questions.jsonl, branch shared/question-bank). Answers are saved into the applier's
 qa_bank with applicant = "tejas". The applier only reads rows for the profile that is applying,
 so these are used ONLY when the applying account is Tejas's own — never by the Vishal test
-profile or anyone else's applier.
+profile or anyone else's applier. Suggested answers come from the local qa_suggest table
+(made on the Pi by applier/suggest.py from PROFILE.md; never shared).
 """
 import json
 import os
@@ -33,60 +34,64 @@ def _conn():
     return c
 
 
-def _saved() -> dict[str, str]:
+def _read():
+    """(saved answers, suggestions) keyed by question text."""
     if not APPLIER_DB.exists():
-        return {}
+        return {}, {}
     c = _conn()
     try:
-        return {r["question"]: r["answer"] for r in c.execute(
+        saved = {r["question"]: r["answer"] for r in c.execute(
             "SELECT question, answer FROM qa_bank WHERE applicant=? AND status='ANSWERED'", (APPLICANT,))}
+        sugg = {}
+        if c.execute("SELECT 1 FROM sqlite_master WHERE name='qa_suggest'").fetchone():
+            for r in c.execute("SELECT question, options FROM qa_suggest"):
+                try:
+                    sugg[r["question"]] = json.loads(r["options"])[:3]
+                except ValueError:
+                    pass
+        return saved, sugg
     finally:
         c.close()
 
 
 def build() -> dict:
-    bank, saved = _bank(), _saved()
-    groups = {"ask": [], "facts": [], "never": []}
+    bank = _bank()
+    saved, sugg = _read()
+    groups = {"ask": [], "facts": [], "never": [], "answered": []}
     for e in bank:
         e["answer"] = saved.get(e["question"], "")
         e["seen"] = len(e.get("wordings") or [])
-        groups.get(e.get("rule"), groups["ask"]).append(e)
+        e["suggestions"] = sugg.get(e["question"], [])
+        rule = e.get("rule") if e.get("rule") in ("ask", "facts", "never") else "ask"
+        groups["answered" if (e["answer"] and rule != "never") else rule].append(e)
     key = lambda e: (CATEGORY_ORDER.index(e["category"]) if e["category"] in CATEGORY_ORDER else 99, e["id"])
     for g in groups.values():
         g.sort(key=key)
-    ask = groups["ask"]
-    return {"ask": ask, "facts": groups["facts"], "never": groups["never"],
-            "done": sum(1 for e in ask if e["answer"]), "total": len(ask), "has_bank": bool(bank)}
+    total_ask = sum(1 for e in bank if e.get("rule") == "ask")
+    done_ask = sum(1 for e in groups["answered"] if e.get("rule") == "ask")
+    return {**groups, "done": done_ask, "total": total_ask, "has_bank": bool(bank),
+            "has_suggestions": bool(sugg)}
 
 
-def save(form: dict) -> int:
-    """form: {"q<id>": answer}. Empty = delete the saved answer. Returns rows changed."""
-    by_id = {str(e["id"]): e["question"] for e in _bank() if e.get("rule") != "never"}
-    now = datetime.now().isoformat(timespec="seconds")
+def save_one(qid: int, answer: str) -> bool:
+    """Save (or, if empty, delete) the answer to bank entry `qid`. False = unknown/never entry."""
+    q = next((e["question"] for e in _bank() if e["id"] == qid and e.get("rule") != "never"), None)
+    if q is None:
+        return False
+    answer = (answer or "").strip()
     c = _conn()
-    n = 0
     try:
-        for k, v in form.items():
-            if not k.startswith("q") or k[1:] not in by_id:
-                continue
-            q, v = by_id[k[1:]], (v or "").strip()
-            old = c.execute("SELECT answer FROM qa_bank WHERE applicant=? AND question=?",
-                            (APPLICANT, q)).fetchone()
-            if not v:
-                if old:
-                    c.execute("DELETE FROM qa_bank WHERE applicant=? AND question=?", (APPLICANT, q))
-                    n += 1
-                continue
-            if old and old["answer"] == v:
-                continue
+        if not answer:
+            c.execute("DELETE FROM qa_bank WHERE applicant=? AND question=?", (APPLICANT, q))
+        else:
+            now = datetime.now().isoformat(timespec="seconds")
             c.execute(
                 "INSERT INTO qa_bank(applicant, question, answer, status, first_seen, answered_at, made_up)"
                 " VALUES(?,?,?,'ANSWERED',?,?,0)"
                 " ON CONFLICT(applicant, question) DO UPDATE SET answer=excluded.answer,"
                 " status='ANSWERED', answered_at=excluded.answered_at, made_up=0",
-                (APPLICANT, q, v, now, now))
-            n += 1
+                (APPLICANT, q, answer, now, now))
         c.commit()
     finally:
         c.close()
-    return n
+    return True

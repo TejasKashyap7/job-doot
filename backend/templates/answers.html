@@ -2,7 +2,30 @@
 {% set nav = "answers" %}
 {% from "_ui.html" import page_head with context %}
 {% block title %}Answers · job-doot{% endblock %}
-{# Spec: .claude/specs/question-bank/spec.md #}
+{# Spec: .claude/specs/question-bank/spec.md (incl. "Vasu-style saving + suggested answers") #}
+
+{% macro qcard(e, pending=True) -%}
+<section class="card ans-card" data-pending="{{ 1 if pending else 0 }}">
+  <div class="ans-top"><span class="chip">{{ e.category }}</span>
+    {% if e.seen %}<span class="muted">seen {{ e.seen }}× on forms</span>{% endif %}</div>
+  <h3 class="ans-title">{{ e.question }}</h3>
+  {% if e.guidance %}<p class="muted ans-g">{{ e.guidance }}</p>{% endif %}
+  <form class="ans-form" data-endpoint="/answers/q/{{ e.id }}">
+    {% if e.suggestions %}
+    <div class="ans-sugg" role="group" aria-label="Suggested answers">
+      {% for s in e.suggestions %}<button type="button" class="ans-pick{{ ' on' if s == e.answer }}">{{ s }}</button>{% endfor %}
+    </div>
+    {% endif %}
+    <label class="ans-field">
+      <span>{{ "Something else" if e.suggestions else "Your answer" }}</span>
+      <textarea name="answer" rows="{{ 3 if e.category == 'free-text' else 1 }}"
+                placeholder="{{ 'Pick one above or type your own' if e.suggestions else 'Type your answer' }}">{{ e.answer }}</textarea>
+    </label>
+    <div class="ans-actions"><button type="submit" class="btn btn--sm">Save</button><span class="ans-status"></span></div>
+  </form>
+</section>
+{%- endmacro %}
+
 {% block body %}
 {{ page_head("Answers", sub=("Shared question bank · " ~ d.done ~ " of " ~ d.total ~ " answered")) }}
 
@@ -11,67 +34,99 @@
   They are <b>not</b> used while the test account (Vishal) is applying. The applier uses them only
   when the account applying is yours (Tejas). That switch comes after the 2-week test; there's no
   fixed date.
+  {% if d.has_suggestions %}<br><span class="muted">Suggestions are guesses from your profile. Tap one, change it, or type your own.</span>{% endif %}
 </section>
-
-{% if saved is not none %}<p class="ans-flash">Saved · {{ saved }} change{{ 's' if saved != 1 }}.</p>{% endif %}
 
 {% if not d.has_bank %}
   <p class="empty">The shared question bank hasn't synced to this machine yet. It syncs once a day.</p>
 {% else %}
-<form method="post" action="/answers" class="ans-form">
-  <h2 class="ans-h">Needs your answer <span class="muted">{{ d.done }}/{{ d.total }}</span></h2>
-  {% for e in d.ask %}
-  <label class="card ans-q{{ ' ans-q--done' if e.answer }}">
-    <span class="ans-q__top"><span class="chip">{{ e.category }}</span>
-      {% if e.seen %}<span class="muted">seen {{ e.seen }}× on forms</span>{% endif %}</span>
-    <span class="ans-q__q">{{ e.question }}</span>
-    {% if e.guidance %}<span class="muted ans-q__g">{{ e.guidance }}</span>{% endif %}
-    <textarea name="q{{ e.id }}" rows="{{ 3 if e.category == 'free-text' else 1 }}" placeholder="Your answer">{{ e.answer }}</textarea>
-  </label>
-  {% endfor %}
+  <h2 class="ans-h">Needs your answer <span class="muted" id="ans-left">{{ d.ask|length }}</span></h2>
+  {% for e in d.ask %}{{ qcard(e) }}{% else %}<p class="empty">All caught up. New questions show up here as the bank grows.</p>{% endfor %}
 
   <details class="ans-more">
     <summary class="ans-h">Usually answered from your profile <span class="muted">{{ d.facts|length }}, optional</span></summary>
-    <p class="muted">Fill one only if you want a fixed answer instead of the applier working it out from your profile.</p>
-    {% for e in d.facts %}
-    <label class="card ans-q{{ ' ans-q--done' if e.answer }}">
-      <span class="ans-q__top"><span class="chip">{{ e.category }}</span>
-        {% if e.seen %}<span class="muted">seen {{ e.seen }}× on forms</span>{% endif %}</span>
-      <span class="ans-q__q">{{ e.question }}</span>
-      {% if e.guidance %}<span class="muted ans-q__g">{{ e.guidance }}</span>{% endif %}
-      <textarea name="q{{ e.id }}" rows="1" placeholder="Optional">{{ e.answer }}</textarea>
-    </label>
-    {% endfor %}
+    <p class="muted">Answer one only if you want a fixed answer instead of the applier working it out from your profile.</p>
+    {% for e in d.facts %}{{ qcard(e) }}{% endfor %}
   </details>
+
+  {% if d.answered %}
+  <details class="ans-more">
+    <summary class="ans-h">Answered <span class="muted">{{ d.answered|length }}</span></summary>
+    <p class="muted">Change an answer and save, or clear the box and save to remove it.</p>
+    {% for e in d.answered %}{{ qcard(e, pending=False) }}{% endfor %}
+  </details>
+  {% endif %}
 
   {% if d.never %}
   <details class="ans-more">
     <summary class="ans-h">Never filled automatically <span class="muted">{{ d.never|length }}</span></summary>
     <p class="muted">Sensitive. The applier always stops and leaves these for you.</p>
     {% for e in d.never %}
-    <div class="card ans-q"><span class="ans-q__q">{{ e.question }}</span>
-      {% if e.guidance %}<span class="muted ans-q__g">{{ e.guidance }}</span>{% endif %}</div>
+    <div class="card ans-card"><h3 class="ans-title">{{ e.question }}</h3>
+      {% if e.guidance %}<p class="muted ans-g">{{ e.guidance }}</p>{% endif %}</div>
     {% endfor %}
   </details>
   {% endif %}
-
-  <div class="ans-save"><button type="submit" class="btn">Save answers</button></div>
-</form>
 {% endif %}
 
 <style>
 .ans-note { margin-bottom: 14px; line-height: 1.5; border-color: var(--line2); }
-.ans-flash { color: var(--ok, #30d158); margin: 0 0 12px; }
-.ans-form { display: grid; gap: 10px; }
-.ans-h { font-size: 17px; margin: 14px 0 4px; display: flex; gap: 8px; align-items: baseline; cursor: pointer; }
-.ans-q { display: grid; gap: 6px; }
-.ans-q--done { border-color: rgba(48,209,88,.35); }
-.ans-q__top { display: flex; gap: 8px; align-items: center; }
-.ans-q__top .chip { padding: 3px 10px; font-size: 12px; }
-.ans-q__q { font-weight: 600; }
-.ans-q__g { font-size: 13px; }
-.ans-more { display: grid; gap: 10px; }
-.ans-more > .card { margin-top: 10px; }
-.ans-save { position: sticky; bottom: 12px; display: flex; justify-content: flex-end; padding-top: 6px; }
+.ans-h { font-size: 17px; margin: 18px 0 8px; display: flex; gap: 8px; align-items: baseline; cursor: pointer; }
+.ans-card { margin-bottom: 12px; display: grid; gap: 6px; transition: opacity .35s, transform .35s; }
+.ans-card--done { opacity: 0; transform: scale(.98); }
+.ans-top { display: flex; gap: 8px; align-items: center; }
+.ans-top .chip { padding: 3px 10px; font-size: 12px; }
+.ans-title { font-size: 16px; margin: 0; }
+.ans-g { margin: 0; font-size: 13px; }
+.ans-form { display: grid; gap: 10px; margin-top: 4px; }
+.ans-sugg { display: flex; flex-wrap: wrap; gap: 8px; }
+.ans-pick { font: inherit; font-size: 14px; text-align: left; color: var(--tx); background: var(--s2);
+  border: 1px solid var(--line2); border-radius: 12px; padding: 9px 12px; cursor: pointer; min-height: 40px; }
+.ans-pick:hover { border-color: var(--mu); }
+.ans-pick.on { border-color: var(--red); background: color-mix(in srgb, var(--red) 14%, var(--s2)); }
+.ans-field { display: grid; gap: 5px; }
+.ans-field span { font-size: 13px; color: var(--mu); font-weight: 600; }
+.ans-actions { display: flex; align-items: center; gap: 12px; }
+.ans-status { font-size: 14px; color: var(--ok, #30d158); }
+.ans-status.err { color: #ff8f8f; }
+.ans-more > .card:first-of-type { margin-top: 6px; }
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Spec: question-bank "Vasu-style saving". Tap a suggestion -> fills the box.
+document.querySelectorAll('.ans-pick').forEach((b) => b.addEventListener('click', () => {
+  const form = b.closest('form');
+  form.querySelectorAll('.ans-pick').forEach((x) => x.classList.toggle('on', x === b));
+  form.querySelector('textarea').value = b.textContent;
+}));
+document.querySelectorAll('.ans-form textarea').forEach((t) => t.addEventListener('input', () => {
+  t.closest('form').querySelectorAll('.ans-pick').forEach((x) => x.classList.toggle('on', x.textContent === t.value));
+}));
+// Save one card: 200 -> "Saved ✓", then the card fades out and is removed.
+document.querySelectorAll('.ans-form').forEach((form) => form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const status = form.querySelector('.ans-status'), btn = form.querySelector('button[type=submit]');
+  const card = form.closest('.ans-card');
+  btn.disabled = true; status.className = 'ans-status'; status.textContent = 'Saving…';
+  try {
+    const res = await fetch(form.dataset.endpoint, { method: 'POST', body: new FormData(form) });
+    if (!res.ok) throw new Error(res.status);
+    status.textContent = 'Saved ✓';
+    if (card.dataset.pending === '1') {
+      setTimeout(() => card.classList.add('ans-card--done'), 400);
+      setTimeout(() => {
+        card.remove();
+        const left = document.getElementById('ans-left');
+        if (left) left.textContent = Math.max(0, (+left.textContent || 1) - 1);
+      }, 800);
+    } else { btn.disabled = false; }
+  } catch (err) {
+    status.className = 'ans-status err';
+    status.textContent = 'Could not save, try again';
+    btn.disabled = false;
+  }
+}));
+</script>
 {% endblock %}
