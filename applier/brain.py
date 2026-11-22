@@ -43,7 +43,14 @@ TEST_RULES = """TEST ACCOUNT (made-up answers allowed):
 
 
 def _rules(cfg) -> str:
-    return TEST_RULES if cfg.get("test_mode") else HONEST_RULES
+    rules = TEST_RULES if cfg.get("test_mode") else HONEST_RULES
+    from .qbank import never_list   # shared bank, rule "never" (spec question-bank/spec.md)
+    never = never_list()
+    if never:
+        rules += ("NEVER AUTO-ANSWER (shared question bank): if a field asks any of these, do not fill "
+                  "it; put it in \"unknown\" (browser: status \"ask_human\"):\n"
+                  + "\n".join(f"- {q}" for q in never) + "\n")
+    return rules
 
 
 PROMPT = """You fill in a LinkedIn Easy Apply form for ONE applicant.

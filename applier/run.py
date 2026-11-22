@@ -204,7 +204,11 @@ def fixed_target(cfg, day) -> int | None:
     `day`, else None. Spec: apply-agent/approach.md "Volume test"."""
     for lo, hi, n in cfg.get("daily_targets") or []:
         if str(lo) <= day.isoformat() <= str(hi):
-            return int(n)
+            extra = 0
+            if cfg.get("daily_extra"):   # e.g. [1, 5]: random bonus, fixed for the whole day
+                a, b = cfg["daily_extra"]
+                extra = random.Random(f"{cfg['name']}:{day.isoformat()}").randint(int(a), int(b))
+            return int(n) + extra
     return None
 
 
@@ -327,6 +331,11 @@ def daemon(cfg):
                     account_health.run_check(cfg)
                 else:
                     send_digest(cfg)
+                    try:   # shared question bank, once a day (spec question-bank/spec.md)
+                        from . import qbank
+                        log.info(qbank.sync(cfg))
+                    except Exception:
+                        log.exception("qbank sync failed — will retry tomorrow")
             except Exception as exc:
                 log.exception("%s failed", kind)
                 if kind in ("slot", "sweep"):
