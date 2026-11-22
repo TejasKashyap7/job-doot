@@ -92,6 +92,22 @@ own applier, and both hit the same application form questions. One shared bank k
   including "Prefer not to say".
 - Values not in the profile (salary, DOB, address): suggestions are clearly guesses or formats;
   the person decides.
+- **Company-dependent questions** (Tejas, 2026-11-23), e.g. "Were you previously employed here?",
+  "Have you applied here before?", "Do you know anyone who works here?": the first suggestion is a
+  conditional rule built from the profile's employers, e.g. "No. Yes only if the company is
+  Lenskart or Blu Parrot Ventures (BluParrot)." The applier's brain is told that a saved answer can
+  be such a rule and must be applied to the company of the job it is filling in.
+- **Tejas's answer rules** (2026-11-23) live in a private local file,
+  `data/applier/answer_rules_tejas.md` (gitignored `data/`, never shared), which `suggest.py` adds
+  to its prompt. Current rules:
+  1. Company history (employed / worked / applied / interviewed / recruitment process with the
+     company or its subsidiaries): No, except Lenskart and Blu Parrot Ventures (from the resume).
+  2. Background checks / references / contacting the current employer: consent only after a
+     written offer; the current employer must not be contacted before an offer.
+  3. Department / area of interest / role type: one choice → Research & Development (AI/ML);
+     several allowed → every AI-related option that matches the job description.
+- Answers can therefore be rules that depend on the company OR the job description; the brain is
+  told to apply them to the job it is filling in.
 - One text box per question. Saving writes/updates the `applicant = "tejas"` row. It shows
   answered/total.
 - Banner: "These are your real answers for your own account. They are NOT used while the test
