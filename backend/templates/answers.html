@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% set nav = "answers" %}
+{% from "_ui.html" import page_head with context %}
+{% block title %}Answers · job-doot{% endblock %}
+{# Spec: .claude/specs/question-bank/spec.md #}
+{% block body %}
+{{ page_head("Answers", sub=("Shared question bank · " ~ d.done ~ " of " ~ d.total ~ " answered")) }}
+
+<section class="card ans-note">
+  <strong>These are your real answers, for your own account.</strong>
+  They are <b>not</b> used while the test account (Vishal) is applying. The applier uses them only
+  when the account applying is yours (Tejas). That switch comes after the 2-week test; there's no
+  fixed date.
+</section>
+
+{% if saved is not none %}<p class="ans-flash">Saved · {{ saved }} change{{ 's' if saved != 1 }}.</p>{% endif %}
+
+{% if not d.has_bank %}
+  <p class="empty">The shared question bank hasn't synced to this machine yet. It syncs once a day.</p>
+{% else %}
+<form method="post" action="/answers" class="ans-form">
+  <h2 class="ans-h">Needs your answer <span class="muted">{{ d.done }}/{{ d.total }}</span></h2>
+  {% for e in d.ask %}
+  <label class="card ans-q{{ ' ans-q--done' if e.answer }}">
+    <span class="ans-q__top"><span class="chip">{{ e.category }}</span>
+      {% if e.seen %}<span class="muted">seen {{ e.seen }}× on forms</span>{% endif %}</span>
+    <span class="ans-q__q">{{ e.question }}</span>
+    {% if e.guidance %}<span class="muted ans-q__g">{{ e.guidance }}</span>{% endif %}
+    <textarea name="q{{ e.id }}" rows="{{ 3 if e.category == 'free-text' else 1 }}" placeholder="Your answer">{{ e.answer }}</textarea>
+  </label>
+  {% endfor %}
+
+  <details class="ans-more">
+    <summary class="ans-h">Usually answered from your profile <span class="muted">{{ d.facts|length }}, optional</span></summary>
+    <p class="muted">Fill one only if you want a fixed answer instead of the applier working it out from your profile.</p>
+    {% for e in d.facts %}
+    <label class="card ans-q{{ ' ans-q--done' if e.answer }}">
+      <span class="ans-q__top"><span class="chip">{{ e.category }}</span>
+        {% if e.seen %}<span class="muted">seen {{ e.seen }}× on forms</span>{% endif %}</span>
+      <span class="ans-q__q">{{ e.question }}</span>
+      {% if e.guidance %}<span class="muted ans-q__g">{{ e.guidance }}</span>{% endif %}
+      <textarea name="q{{ e.id }}" rows="1" placeholder="Optional">{{ e.answer }}</textarea>
+    </label>
+    {% endfor %}
+  </details>
+
+  {% if d.never %}
+  <details class="ans-more">
+    <summary class="ans-h">Never filled automatically <span class="muted">{{ d.never|length }}</span></summary>
+    <p class="muted">Sensitive. The applier always stops and leaves these for you.</p>
+    {% for e in d.never %}
+    <div class="card ans-q"><span class="ans-q__q">{{ e.question }}</span>
+      {% if e.guidance %}<span class="muted ans-q__g">{{ e.guidance }}</span>{% endif %}</div>
+    {% endfor %}
+  </details>
+  {% endif %}
+
+  <div class="ans-save"><button type="submit" class="btn">Save answers</button></div>
+</form>
+{% endif %}
+
+<style>
+.ans-note { margin-bottom: 14px; line-height: 1.5; border-color: var(--line2); }
+.ans-flash { color: var(--ok, #30d158); margin: 0 0 12px; }
+.ans-form { display: grid; gap: 10px; }
+.ans-h { font-size: 17px; margin: 14px 0 4px; display: flex; gap: 8px; align-items: baseline; cursor: pointer; }
+.ans-q { display: grid; gap: 6px; }
+.ans-q--done { border-color: rgba(48,209,88,.35); }
+.ans-q__top { display: flex; gap: 8px; align-items: center; }
+.ans-q__top .chip { padding: 3px 10px; font-size: 12px; }
+.ans-q__q { font-weight: 600; }
+.ans-q__g { font-size: 13px; }
+.ans-more { display: grid; gap: 10px; }
+.ans-more > .card { margin-top: 10px; }
+.ans-save { position: sticky; bottom: 12px; display: flex; justify-content: flex-end; padding-top: 6px; }
+</style>
+{% endblock %}

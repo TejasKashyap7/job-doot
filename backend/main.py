@@ -742,6 +742,30 @@ def needs_you_view(request: Request, current_user: User = Depends(require_login)
     })
 
 
+def _is_owner(user: User) -> bool:
+    return user.is_admin or user.id == int(os.getenv("SUMMARY_USER_ID", "1"))
+
+
+@app.get("/answers", response_class=HTMLResponse)
+def answers_view(request: Request, current_user: User = Depends(require_login), saved: int | None = None):
+    """Tejas's real answers to the shared question bank. Spec: .claude/specs/question-bank/spec.md."""
+    if not _is_owner(current_user):
+        return RedirectResponse("/", status_code=303)
+    from services import answers
+    return templates.TemplateResponse("answers.html", {
+        "request": request, "current_user": current_user, "d": answers.build(), "saved": saved,
+    })
+
+
+@app.post("/answers")
+async def answers_save(request: Request, current_user: User = Depends(require_login)):
+    if not _is_owner(current_user):
+        return RedirectResponse("/", status_code=303)
+    from services import answers
+    n = answers.save(dict(await request.form()))
+    return RedirectResponse(f"/answers?saved={n}", status_code=303)
+
+
 @app.get("/insights", response_class=HTMLResponse)
 def insights_view(request: Request, current_user: User = Depends(require_login), db: Session = Depends(get_db),
                    days: int = 180):

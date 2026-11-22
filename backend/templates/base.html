@@ -14,6 +14,7 @@
 {% from "_ui.html" import icon %}
 {% set authed = current_user is defined and current_user %}
 {% set nav_items = [("today", "/", "Today"), ("jobs", "/jobs", "Jobs"), ("insights", "/insights", "Insights"), ("blockers", "/needs-you", "Blockers")] %}
+{% if authed and (current_user.is_admin or current_user.id == 1) %}{% set nav_items = nav_items + [("answers", "/answers", "Answers")] %}{% endif %}
 {% if authed and current_user.is_admin %}{% set nav_items = nav_items + [("admin", "/admin", "Admin")] %}{% endif %}
 
 {% if authed %}
