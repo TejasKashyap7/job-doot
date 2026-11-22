@@ -80,6 +80,9 @@ them and keep the lower ID.
 | 19 | City / District / State / Country | location | Ask the person (part of the address set). |
 | 20 | Government ID — PAN / Aadhaar / passport / SSN / national ID | sensitive | **Never auto-answer** — always route to the human. |
 | 21 | Date of birth | sensitive | Ask the person; don't guess. |
+| 22 | How did you hear about us? | screening | Safe default "LinkedIn" (where most of our applies come from); or ask the person. *(Added 2026-11-22, MSD / Workday.)* |
+| 23 | Were you previously employed here (former employee / contingent / temporary / consultant)? | screening | Usually "No" — ask the person if unsure. *(Added 2026-11-22, MSD / Workday.)* |
+| 24 | Phone device type (mobile / landline / etc.) | identity | "Mobile". *(Added 2026-11-22, MSD / Workday.)* |
 
 <!--
 HOW TO ADD #22 AND BEYOND (copy a row, bump the number):
