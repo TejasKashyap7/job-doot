@@ -13,7 +13,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from . import qbank, store
+from . import config, qbank, store
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +25,9 @@ PROMPT = """You help a job seeker pre-fill answers to job-application questions.
 THEIR PROFILE (their own notes):
 {profile}
 
+THEIR ANSWER RULES (always follow these; make the first option match the rule):
+{rules}
+
 For each question below, give up to 3 short, realistic answers they would most likely pick,
 best first. Each answer must be ready to paste into a form (no explanations, under 25 words;
 free-text questions may be up to 2 sentences).
@@ -35,6 +38,14 @@ free-text questions may be up to 2 sentences).
   orientation, veteran status): NEVER guess from the profile or name. Offer the standard
   neutral options and include "Prefer not to say".
 - Yes/No questions: give the most likely one first, then the other.
+- Questions whose answer depends on WHICH company the form is for ("previously employed here",
+  "worked for us before", "applied here before", "know anyone / relatives who work here",
+  "current or former employee"): the FIRST option must be a rule naming the employers from the
+  profile, e.g. "No. Yes only if the company is Lenskart or Blu Parrot Ventures (BluParrot)."
+  Then plain "No", then plain "Yes".
+- Questions whose answer depends on the JOB DESCRIPTION (department, team, area of interest):
+  the first option is a rule, e.g. "One choice: Research & Development (AI/ML). Several: every
+  AI-related option that matches the job description."
 
 QUESTIONS:
 {questions}
@@ -50,6 +61,8 @@ def _table(conn):
 def run(cfg, applicant: str, profile_md: Path = DEFAULT_PROFILE_MD, redo: bool = False) -> int:
     from .brain import _call
     profile = profile_md.read_text()
+    rules_file = config.DATA / f"answer_rules_{applicant}.md"   # private, local (spec: answer rules)
+    rules = rules_file.read_text() if rules_file.exists() else "(none)"
     conn = store.connect()
     _table(conn)
     answered = {r[0] for r in conn.execute(
@@ -64,7 +77,7 @@ def run(cfg, applicant: str, profile_md: Path = DEFAULT_PROFILE_MD, redo: bool =
         qs = "\n".join(f"{i}. {e['question']}" + (f"  (hint: {e['guidance']})" if e.get("guidance") else "")
                        for i, e in enumerate(chunk))
         try:
-            data = _call(cfg, PROMPT.format(profile=profile, questions=qs), cfg["models"]["primary"])
+            data = _call(cfg, PROMPT.format(profile=profile, rules=rules, questions=qs), cfg["models"]["primary"])
         except Exception:
             log.exception("suggest: batch %d failed", s)
             continue

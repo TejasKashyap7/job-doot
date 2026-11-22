@@ -74,7 +74,9 @@ Reply with ONLY this JSON, nothing else:
 APPLICANT FACTS:
 {facts}
 
-ANSWERED QUESTIONS (reuse for same-meaning questions, even if worded differently):
+ANSWERED QUESTIONS (reuse for same-meaning questions, even if worded differently; an answer
+may be a rule that depends on the company or the job description, e.g. "No. Yes only if the
+company is X" — apply it to THIS job and fill in the resulting plain answer):
 {qa}
 
 JOB: {title} at {company}
@@ -242,7 +244,8 @@ No codes, no element numbers. Example: "The company page only had a job-search b
 APPLICANT FACTS:
 {facts}
 
-ANSWERED QUESTIONS (reuse for same-meaning questions):
+ANSWERED QUESTIONS (reuse for same-meaning questions; an answer may be a rule that depends on
+the company or the job description, e.g. "No. Yes only if the company is X" — apply it to THIS job):
 {qa}
 
 WHAT YOU DID SO FAR (most recent last):
