@@ -113,6 +113,29 @@ own applier, and both hit the same application form questions. One shared bank k
 - Banner: "These are your real answers for your own account. They are NOT used while the test
   account (Vishal) is applying. They start being used once applying switches to your account."
 
+## Persona replaces per-question answers (Tejas, 2026-11-24)
+Most answers are the same for every company (notice period, past employers, relatives, pay…).
+One description of Tejas answers them all, and new questions can be answered from it too.
+- **Persona file:** `data/applier/persona_<applicant>.md` (private, local, gitignored `data/`, never
+  shared). Built from all of Tejas's Answers-tab answers + PROFILE.md + his answer rules.
+  It includes company-dependent rules (employers = Lenskart, BluParrot only; relatives at any
+  company = No; friends only at Lenskart/BluParrot) and JD-dependent rules.
+- **Applier:** when `persona_<applicant>.md` exists, its text is added to the APPLICANT FACTS
+  in both brain prompts (`answer_fields`, `next_actions`). Honest mode unchanged: a required
+  question the facts + persona + saved answers can't answer truthfully → "unknown" / ask_human
+  → it lands in `qa_bank` as UNANSWERED → reaches the bank → shows as a card on the Answers tab.
+- **Saved answers removed:** the 68 per-question answers (`qa_bank`, `applicant = "tejas"`,
+  ANSWERED) are deleted after a DB backup, so many slightly different answers can't confuse the
+  applier. The persona is the single source.
+- **Covered list:** `data/applier/persona_<applicant>_covered.json` = bank entry ids the persona
+  already answers (plus placeholder entries whose question text was never captured). The Answers
+  tab moves them into a collapsed read-only "Covered by your persona" section and counts them as
+  done. Only questions NOT covered are shown as cards.
+- **New answers:** answering a new card saves it to `qa_bank` as before (used by the applier
+  right away). When Tejas asks, Claude folds those answers into the persona, adds their ids to
+  the covered list and deletes the rows. Manual for now.
+- Contradictions found while building the persona are asked to Tejas, never resolved by guess.
+
 ## Out of scope (phase 1)
 - Vasu's machine: he pulls this spec + `applier/qbank.py` and runs the same daily sync. His
   existing `APPLICATION-QUESTIONS.md` on his branch is folded in as the seed (#1–#24).

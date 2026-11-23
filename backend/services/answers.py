@@ -54,21 +54,39 @@ def _read():
         c.close()
 
 
+COVERED = DATA / f"persona_{APPLICANT}_covered.json"   # spec: "Persona replaces per-question answers"
+
+
+def _covered() -> set[int]:
+    """Bank ids the persona already answers (private, local file kept next to the persona)."""
+    try:
+        return {int(i) for i in json.loads(COVERED.read_text())}
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
 def build() -> dict:
     bank = _bank()
     saved, sugg = _read()
-    groups = {"ask": [], "facts": [], "never": [], "answered": []}
+    covered = _covered()
+    groups = {"ask": [], "facts": [], "never": [], "answered": [], "covered": []}
     for e in bank:
         e["answer"] = saved.get(e["question"], "")
         e["seen"] = len(e.get("wordings") or [])
         e["suggestions"] = sugg.get(e["question"], [])
         rule = e.get("rule") if e.get("rule") in ("ask", "facts", "never") else "ask"
-        groups["answered" if (e["answer"] and rule != "never") else rule].append(e)
+        if e["answer"] and rule != "never":
+            g = "answered"
+        elif e["id"] in covered and rule != "never":
+            g = "covered"
+        else:
+            g = rule
+        groups[g].append(e)
     key = lambda e: (CATEGORY_ORDER.index(e["category"]) if e["category"] in CATEGORY_ORDER else 99, e["id"])
     for g in groups.values():
         g.sort(key=key)
     total_ask = sum(1 for e in bank if e.get("rule") == "ask")
-    done_ask = sum(1 for e in groups["answered"] if e.get("rule") == "ask")
+    done_ask = sum(1 for e in groups["answered"] + groups["covered"] if e.get("rule") == "ask")
     return {**groups, "done": done_ask, "total": total_ask, "has_bank": bool(bank),
             "has_suggestions": bool(sugg)}
 

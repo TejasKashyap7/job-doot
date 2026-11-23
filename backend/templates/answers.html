@@ -27,7 +27,7 @@
 {%- endmacro %}
 
 {% block body %}
-{{ page_head("Answers", sub=("Shared question bank · " ~ d.done ~ " of " ~ d.total ~ " answered")) }}
+{{ page_head("Answers", sub=("Shared question bank · " ~ d.done ~ " of " ~ d.total ~ " answered or covered by your persona")) }}
 
 <section class="card ans-note">
   <strong>These are your real answers, for your own account.</strong>
@@ -54,6 +54,18 @@
     <summary class="ans-h">Answered <span class="muted">{{ d.answered|length }}</span></summary>
     <p class="muted">Change an answer and save, or clear the box and save to remove it.</p>
     {% for e in d.answered %}{{ qcard(e, pending=False) }}{% endfor %}
+  </details>
+  {% endif %}
+
+  {% if d.covered %}
+  <details class="ans-more">
+    <summary class="ans-h">Covered by your persona <span class="muted">{{ d.covered|length }}</span></summary>
+    <p class="muted">The applier answers these from your persona file, the same way for every company.
+      Ask Claude to change the persona if something here is wrong.</p>
+    {% for e in d.covered %}
+    <div class="card ans-card"><div class="ans-top"><span class="chip">{{ e.category }}</span></div>
+      <h3 class="ans-title">{{ e.question }}</h3></div>
+    {% endfor %}
   </details>
   {% endif %}
 
