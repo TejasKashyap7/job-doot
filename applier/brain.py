@@ -42,6 +42,18 @@ TEST_RULES = """TEST ACCOUNT (made-up answers allowed):
 """
 
 
+def _facts(cfg) -> str:
+    """Profile facts + the applicant persona, if one exists (private, local:
+    data/applier/persona_<name>.md). Spec: question-bank/spec.md "Persona replaces per-question answers"."""
+    from .config import DATA
+    facts = cfg["facts"].strip()
+    p = DATA / f"persona_{cfg.get('name')}.md"
+    if p.exists():
+        facts += ("\n\nAPPLICANT PERSONA (their own words; use it to answer ANY question it covers, "
+                  "applying company- and JD-dependent rules to THIS job):\n" + p.read_text().strip())
+    return facts
+
+
 def _rules(cfg) -> str:
     rules = TEST_RULES if cfg.get("test_mode") else HONEST_RULES
     from .qbank import never_list   # shared bank, rule "never" (spec question-bank/spec.md)
@@ -154,7 +166,7 @@ def answer_fields(cfg, fields: list[dict], qa: list[dict], job: dict, errors: st
     qa_text = "\n".join(f"Q: {q['question']}\nA: {q['answer']}" for q in qa) or "(none yet)"
     slim = [{k: f[k] for k in ("id", "type", "label", "required", "options") if k in f} for f in fields]
     prompt = PROMPT.format(
-        rules=_rules(cfg), facts=cfg["facts"].strip(), qa=qa_text, title=job.get("title"), company=job.get("company"),
+        rules=_rules(cfg), facts=_facts(cfg), qa=qa_text, title=job.get("title"), company=job.get("company"),
         errors=f"\nTHE FORM REJECTED THE LAST ANSWERS WITH: {errors}\n" if errors else "",
         fields=json.dumps(slim, ensure_ascii=False, indent=1),
     )
@@ -338,7 +350,7 @@ def next_actions(cfg, snap: dict, rendered: str, job: dict, qa: list[dict], hist
     prompt = AGENT_PROMPT.format(
         rules=_rules(cfg), title=job.get("title"), company=job.get("company"), scope=scope,
         resume_name=os.path.basename(str(cfg.get("resume_pdf") or "resume.pdf")),
-        facts=cfg["facts"].strip(), qa=qa_text,
+        facts=_facts(cfg), qa=qa_text,
         history="\n".join(history[-8:]) or "(just opened the job page)",
         note=f"\nNOTE FROM THE BROWSER: {note}\n" if note else "",
         url=snap["url"][:300], page_title=snap["title"][:150],
