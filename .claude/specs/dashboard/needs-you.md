@@ -10,7 +10,9 @@ away via the "Applied" chip on Jobs (and Archive highlights the Jobs tab).
 ## Data
 `data/applier/applier.db` → `attempts` with `detail LIKE 'needs_human:%'` (read-only), owner's
 applier. Each row is tagged with the shared classifier (`services/problem_tags.py`, same tags as
-the bell). Range filter in one row at the top: 7 days · 30 days · All (default All).
+the bell). Range filter in one row at the top: Today · 7 days · 30 days · All.
+**Default = Today** (Tejas, 2026-11-24): since midnight IST (`?days=1`). The applier writes
+`created_at` in IST and the container runs on UTC, so all ranges are computed in IST (+05:30).
 
 ## Layout (phone first, one column; >= 900px two columns for the sections)
 1. **Header**: total count + range filter.

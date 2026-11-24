@@ -730,7 +730,7 @@ def dashboard(request: Request, current_user: User = Depends(require_login), db:
 
 
 @app.get("/needs-you", response_class=HTMLResponse)
-def needs_you_view(request: Request, current_user: User = Depends(require_login), days: int = 0):
+def needs_you_view(request: Request, current_user: User = Depends(require_login), days: int = 1):
     """Jobs the applier parked as "needs you", grouped by problem tag.
     Spec: .claude/specs/dashboard/needs-you.md. The applier applies for the owner only."""
     from services.needs_you import build

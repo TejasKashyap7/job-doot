@@ -3,13 +3,14 @@ problem tag. Spec: .claude/specs/dashboard/needs-you.md. Reads data/applier/appl
 import os
 import sqlite3
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from services.problem_tags import GREY, NEEDS_YOU_ORDER, classify, plain_reason, site_of, tag_info, url_of
 
 APPLIER_DIR = Path(os.getenv("APPLIER_DATA_DIR", "/app/data/applier"))
 OVERVIEW_PARTS = 6      # segmented bar: <= 6 parts, the tail folds into "Other"
+IST = timezone(timedelta(hours=5, minutes=30))   # the container runs on UTC
 TOP_BARS = 8            # ranked bars per section, then "Others"
 
 
@@ -21,7 +22,11 @@ def _rows(days: int) -> list[dict]:
     try:
         if not c.execute("SELECT 1 FROM sqlite_master WHERE name='attempts'").fetchone():
             return []
-        since = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds") if days > 0 else ""
+        now = datetime.now(IST).replace(tzinfo=None)   # applier writes created_at in IST
+        if days == 1:     # "Today" = since midnight IST (spec needs-you.md, 2026-11-24)
+            since = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(timespec="seconds")
+        else:
+            since = (now - timedelta(days=days)).isoformat(timespec="seconds") if days > 0 else ""
         cur = c.execute(
             "SELECT created_at, company, title, url, detail FROM attempts "
             "WHERE detail LIKE 'needs_human:%' AND created_at >= ? ORDER BY created_at DESC", (since,))
