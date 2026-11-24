@@ -50,16 +50,23 @@ rule turned it yellow with no reason. Rule from now on: **any applier error show
 widget at the next refresh, in plain words.**
 
 - The applier writes `data/applier/HEALTH.json` after every slot (atomic write):
-  `{"at", "result": "ok"|"crashed"|"claude_logged_out", "message" (short, fits the footer),
+  `{"at", "result": "ok"|"crashed"|"claude_logged_out"|"claude_quota", "message" (short, fits the footer),
   "detail" (first line of the real error), "streak" (same result in a row)}`.
   - `crashed` — the slot raised before finishing (e.g. browser couldn't start/connect).
   - `claude_logged_out` — a brain call failed with an auth error ("Failed to
     authenticate", "OAuth session expired", "Not logged in", "Invalid API key",
     "Please run /login"). The slot ends at once, the job is **not** logged as failed
     (so it gets retried after the login is fixed), and one Telegram alert per day.
-  - `ok` — the slot finished (including "paused" / "no eligible jobs" / quota). Clears the error.
+  - `claude_quota` (Tejas, 2026-11-24) — Claude's usage limit is hit (the brain returned
+    "You've hit your … limit · resets <time>"). Nothing can be applied until it resets, and on
+    24 Nov that silently cost 11 of the day's 24 applications. Shown **red** like a logout,
+    message `Claude limit hit · resets <time>`. The slot ends at once (job not counted as failed).
+    One Telegram alert per day, which says what to do: wait for the reset, or log the Pi's
+    `claude` in to another account. Cleared by the next `ok` slot.
+  - `ok` — the slot finished (including "paused" / "no eligible jobs"). Clears the error.
 - `/api/summary` reads it (read-only). Order of applier states: paused → Claude logged
-  out → crashed → quiet >26h → running. Logged out / crashed ⇒ status **red**.
+  out → Claude limit hit → crashed → quiet >26h → running. Logged out / limit hit / crashed ⇒
+  status **red**.
   Footer text (via the existing `Applier: <applier>`): `Applier: Claude logged out (Pi)`,
   `Applier: crashed 19:43 (x8)`. New field `applier_detail` carries the real error;
   the calendar/summary text includes it.

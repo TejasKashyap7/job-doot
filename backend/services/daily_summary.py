@@ -91,11 +91,13 @@ def build_summary(db, days_ago: int = 0) -> dict:
     ap = _applier_numbers(start_ist.replace(tzinfo=None).isoformat(timespec="seconds"),
                           end_ist.replace(tzinfo=None).isoformat(timespec="seconds"))
     health = _applier_health()
-    applier_error = health.get("result") in ("claude_logged_out", "crashed")
+    applier_error = health.get("result") in ("claude_logged_out", "claude_quota", "crashed")
     if ap["paused"]:
         applier = f"paused: {ap['paused']}"
     elif health.get("result") == "claude_logged_out":
         applier = health.get("message") or "Claude logged out (Pi)"
+    elif health.get("result") == "claude_quota":   # phone-widget.md, 2026-11-24
+        applier = health.get("message") or "Claude limit hit"
     elif health.get("result") == "crashed":
         streak = health.get("streak", 1)
         applier = (health.get("message") or "crashed") + (f" (x{streak})" if streak > 1 else "")
