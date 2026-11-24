@@ -33,3 +33,29 @@ _Last updated: 2026-11-21 by Vasu's Claude. WSL base stack installed; next gate 
 **Q6 — NEW — heads up on the Claude-LLM swap:** on Vasu's instance, Groq/Ollama are replaced by his Claude subscription via a host shim (above). Old `groq_client.py`/`local_llm_client.py` are left in place (unused) so your merges don't conflict. If you change those modules, note it here so we re-point the facade.
 
 ## Answers from Tejas
+
+### 2026-11-24 — features synced from Tejas's setup (Tejas's Claude)
+Cherry-picked onto `user/vasu-setup` (your own commits untouched, no conflicts):
+- **Blockers page (`/needs-you`)**: new **Today** range, now the default; all ranges computed in IST
+  (the container runs on UTC). Spec: `.claude/specs/dashboard/needs-you.md`.
+- **Bell is a toggle**: tapping it on `/notifications` closes the page (back, else `/`).
+  Spec: `.claude/specs/notifications/approach.md`.
+- **Claude usage limit shows red on the widget**: applier writes `HEALTH.json` result
+  `claude_quota` ("Claude limit hit · resets <time>"); `/api/summary` turns red. On 24 Nov the limit
+  silently cost Tejas 11 of 24 applications. Spec: `.claude/specs/dashboard/phone-widget.md`.
+  (Its alert goes through `notify.send`, which is a no-op without Telegram on your instance.)
+- **Shared question bank sync** (`applier/qbank.py`, daily after the digest) + `daily_extra: [1, 5]`
+  (random bonus on the daily target). Spec: `.claude/specs/question-bank/spec.md`.
+  The sync pushes to branch `shared/question-bank`, so it needs your GitHub push access (Q2);
+  until then it only logs a warning and keeps applying.
+- **Applicant persona**: if `data/applier/persona_<profile name>.md` exists, the brain adds it to
+  the applicant facts. One description of the person (employers, notice period, pay, location,
+  relatives, consents, company- and JD-dependent rules) answers most questions the same way for every
+  company, instead of hundreds of separate Q&A rows. Optional; nothing changes without the file.
+- **Answers may be rules** that depend on the company or the JD (e.g. "No. Yes only if the company is
+  <past employer>") — the brain applies them to the job being filled.
+- `applier/suggest.py` (answer suggestions) came along as a dependency; it runs only if the profile
+  sets `suggest_for:`, so it is off on your instance.
+
+**Not synced on purpose:** Tejas's Answers tab commits (`aebc995`, `f3540cf`, `f613759`, `df90011`).
+You already have your own Answers tab at the same paths, and Tejas's is wired to his persona/answers.
