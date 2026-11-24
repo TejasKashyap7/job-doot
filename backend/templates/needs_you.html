@@ -7,7 +7,7 @@
 {{ page_head("Blockers", sub=("Why the applier needed you · " ~ d.total ~ " job" ~ ('s' if d.total != 1 else ''))) }}
 
 <nav class="ny-range" aria-label="Time range">
-  {% for v, name in [(7, "7 days"), (30, "30 days"), (0, "All")] %}
+  {% for v, name in [(1, "Today"), (7, "7 days"), (30, "30 days"), (0, "All")] %}
   <a href="/needs-you?days={{ v }}" class="ny-range__btn{{ ' on' if d.days == v else '' }}">{{ name }}</a>
   {% endfor %}
 </nav>
