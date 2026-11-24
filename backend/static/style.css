@@ -365,6 +365,7 @@ dialog h3 { margin: 0 0 4px; font-size: 18px; }
 .bell { position: relative; width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: 50%; background: var(--s2); border: 1px solid var(--line); color: var(--mu); flex: none; }
 .bell svg { width: 18px; height: 18px; }
 .bell:hover, .bell--on { color: var(--tx); }
+.bell--open { color: var(--tx); background: var(--s3, var(--line2)); border-color: var(--mu); }
 .bell__n { position: absolute; top: -5px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--red); color: #120a0a; font: 800 11px/18px var(--f); text-align: center; border: 2px solid var(--bg); box-sizing: content-box; }
 .ntf-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .ntf-list { padding: 4px 16px; }

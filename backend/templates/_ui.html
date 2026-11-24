@@ -20,8 +20,13 @@
     {{ right|safe }}
     {% if current_user is defined and current_user %}
     {% set unread = notif_unread(current_user) %}
-    <a class="bell{{ ' bell--on' if unread else '' }}" href="/notifications"
-       aria-label="Notifications{{ ', ' ~ unread ~ ' unread' if unread else '' }}">{{ icon("bell") }}{% if unread %}<span class="bell__n">{{ unread if unread < 100 else '99+' }}</span>{% endif %}</a>
+    {% set bell_open = request is defined and request.url.path == "/notifications" %}
+    {# Toggle (spec notifications/approach.md, 2026-11-24): on /notifications the bell closes the page. #}
+    <a class="bell{{ ' bell--on' if unread else '' }}{{ ' bell--open' if bell_open else '' }}"
+       href="{{ '/' if bell_open else '/notifications' }}"
+       {% if bell_open %}onclick="try{var r=document.referrer&&new URL(document.referrer);if(r&&r.origin===location.origin&&r.pathname!=='/notifications'){history.back();return false}}catch(e){}"{% endif %}
+       aria-expanded="{{ 'true' if bell_open else 'false' }}"
+       aria-label="{{ 'Close notifications' if bell_open else 'Notifications' ~ (', ' ~ unread ~ ' unread' if unread else '') }}">{{ icon("bell") }}{% if unread %}<span class="bell__n">{{ unread if unread < 100 else '99+' }}</span>{% endif %}</a>
     <details class="acct">
       <summary aria-label="Account"><span class="avatar">{{ current_user.username[0]|upper }}</span></summary>
       <div class="acct__menu">

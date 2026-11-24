@@ -77,6 +77,9 @@ sites with no submit button) and stayed paused for a day+. The widget/Today card
 Tapping it opens `/notifications`: newest first, each row = level dot, title, detail, the
 "what to do" line, time ago, optional action link. Buttons: "Mark all read", "Clear all".
 Opening the page does NOT auto-mark read (you might just glance); "Mark all read" does.
+**Bell is a toggle (Tejas, 2026-11-24):** on `/notifications` the bell shows as active, and
+tapping it again closes the page: back to the page you came from (same-site referrer), else
+Today (`/`).
 
 **Who sees what (Tejas chose "everyone, own events"):**
 - `user_id = NULL` → system events → shown to admins only (scraper, cookie, scoring, Ollama…)
