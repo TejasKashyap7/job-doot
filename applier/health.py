@@ -9,7 +9,7 @@ from .config import DATA
 
 FILE = DATA / "HEALTH.json"
 
-OK, CRASHED, LOGGED_OUT = "ok", "crashed", "claude_logged_out"
+OK, CRASHED, LOGGED_OUT, QUOTA = "ok", "crashed", "claude_logged_out", "claude_quota"
 
 writes = 0  # bumped on every record(); the daemon uses it to see if a slot reported itself
 
