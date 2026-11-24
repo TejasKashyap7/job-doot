@@ -9,6 +9,7 @@
   python -m applier.run look   --profile vishal --url URL    # Haiku's plan for a page, no actions
   python -m applier.run try    --profile vishal --job ID     # apply to one job now (ignores pause)
 """
+import re
 import argparse
 import logging
 import math
@@ -136,10 +137,15 @@ def run_slot(cfg, max_apply: int | None = None, max_views: int | None = None) ->
                     return
                 if status == "skipped" and detail.startswith("quota:"):
                     log.info("Claude quota exhausted — ending slot; applying resumes after the reset")
+                    # Red on the widget (spec dashboard/phone-widget.md, claude_quota, 2026-11-24)
+                    why = detail[len("quota:"):].strip()
+                    m = re.search(r"resets\s+([^()]+?)\s*(\(|$)", why)
+                    health.record(health.QUOTA, "Claude limit hit" + (f" · resets {m.group(1)}" if m else ""), why)
                     if not (DATA / f"quota-notified-{datetime.now():%Y%m%d}").exists():
                         (DATA / f"quota-notified-{datetime.now():%Y%m%d}").touch()
-                        notify.send(cfg, f"⏸️ Applier for {applicant}: Claude usage limit reached "
-                                         f"({detail[len('quota:'):]}). Skipping until it resets — no action needed.")
+                        notify.send(cfg, f"🔴 Applier for {applicant} stopped: Claude usage limit hit ({why}). "
+                                         "Nothing is applied until it resets. To keep applying now, log the Pi's "
+                                         "claude in to another account: ssh tejas@pi5 → ~/.local/bin/claude → /login")
                     return
                 if status == "applied":
                     applied += 1
