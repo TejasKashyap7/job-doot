@@ -9,6 +9,7 @@
   python -m applier.run look   --profile vishal --url URL    # Haiku's plan for a page, no actions
   python -m applier.run try    --profile vishal --job ID     # apply to one job now (ignores pause)
 """
+import os
 import re
 import argparse
 import logging
@@ -76,7 +77,10 @@ def run_slot(cfg, max_apply: int | None = None, max_views: int | None = None) ->
         if cfg.get("source") == "linkedin_search":
             yield searched()
             return
-        yield backend.candidate_jobs(cfg)
+        # Parallel workers (Tejas, 2026-11-24 catch-up): each takes its own share of job ids,
+        # so two workers never pick the same job.
+        found = backend.candidate_jobs(cfg)
+        yield found
         if cfg.get("topup_search"):
             for _ in range(cfg["topup_searches"]):
                 if applied >= target or views >= view_cap:
@@ -91,6 +95,9 @@ def run_slot(cfg, max_apply: int | None = None, max_views: int | None = None) ->
             if found is None:      # safety stop on the search page — everything is paused
                 return
             jobs = [j for j in found if j["id"] not in excluded and j["id"] not in tried]
+            if (shard := os.getenv("APPLIER_SHARD")):   # "i/n": this worker keeps id % n == i
+                i, n = (int(x) for x in shard.split("/"))
+                jobs = [j for j in jobs if str(j["id"]).isdigit() and int(j["id"]) % n == i]
             if not jobs:
                 log.info("No eligible jobs in this batch")
                 continue

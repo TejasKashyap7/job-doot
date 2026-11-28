@@ -39,7 +39,7 @@ def search_jobs(page, cfg) -> list[dict]:
     params = {"keywords": kw, "location": cfg.get("search_location", "India"),
               "f_AL": "true", "f_TPR": "r604800"}
     page.goto("https://www.linkedin.com/jobs/search/?" + urllib.parse.urlencode(params),
-              wait_until="domcontentloaded")
+              wait_until="domcontentloaded", timeout=60000)
     pause(4, 7)
     if (hit := safety.check(page)):
         raise SafetyStop(hit)
